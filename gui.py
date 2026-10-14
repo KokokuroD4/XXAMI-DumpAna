@@ -1104,7 +1104,7 @@ class AppMultiherramienta:
         for carpeta_models in sorted(raiz.rglob("Models"), key=lambda p: str(p).lower()):
             if not carpeta_models.is_dir():
                 continue
-            submodelos = sorted((p for p in carpeta_models.iterdir() if p.is_dir() and re.match(r"^Model_\\d+$", p.name, re.I)),
+            submodelos = sorted((p for p in carpeta_models.iterdir() if p.is_dir() and re.match(r"^Model_\d+$", p.name, re.I)),
                                 key=lambda p: p.name.lower())
             if submodelos:
                 for sub in submodelos:
@@ -1158,16 +1158,10 @@ class AppMultiherramienta:
             messagebox.showinfo("Parsear volcado de modelo", "Este modelo no contiene texturas .ktx2 ni .raw.")
             return
         convertidas, omitidas, errores = 0, 0, []
-        hashes_vistos = set()
         for textura in texturas:
-            # Reutilizar una conversión del mismo hash dentro del modelo evita PNG duplicados.
-            hash_tex = extraer_hash_textura(textura.name)
-            clave = hash_tex.lower() if hash_tex else textura.stem.lower()
+            # Un PNG por archivo fuente conserva el nombre del slot (Part00Diffuse,
+            # Part00BumpMap, etc.); los originales y sus hashes no se alteran.
             destino = textura.with_suffix(".png")
-            if clave in hashes_vistos:
-                omitidas += 1
-                continue
-            hashes_vistos.add(clave)
             try:
                 if destino.exists():
                     omitidas += 1
@@ -1181,7 +1175,7 @@ class AppMultiherramienta:
         self._mostrar_archivos_modelo()
         resumen = f"PNG creados: {convertidas}. Ya existentes/duplicados omitidos: {omitidas}."
         if errores:
-            resumen += "\\n\\nAvisos:\\n" + "\\n".join(errores[:12])
+            resumen += "\n\nAvisos:\n" + "\n".join(errores[:12])
         messagebox.showinfo("Parsear volcado de modelo", resumen)
 
     def actualizar_interfaz_explorador(self):
@@ -1197,8 +1191,11 @@ class AppMultiherramienta:
         for lbl, ruta in sorted(self.archivos_mapeados.items(), key=lambda x: x[0].lower()):
             if texto_filtro and texto_filtro not in lbl.lower(): continue
             if ruta.endswith('.spv'): self.lista_shaders.insert(tk.END, f" 📄 {lbl}")
-            elif ruta.endswith('.buf'):
-                if es_modelo_listable(ruta): self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
+            elif ruta.endswith(('.buf', '.txt', '.json')):
+                if ruta.endswith('.buf') and es_modelo_listable(ruta):
+                    self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
+                elif ruta.endswith(('.txt', '.json')):
+                    self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
             elif ruta.endswith(('.raw', '.ktx2')): claves_texturas.append(lbl)
 
         # Límite de seguridad por GDI: cada miniatura necesita un PhotoImage, y eso
