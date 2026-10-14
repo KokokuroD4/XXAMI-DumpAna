@@ -1163,23 +1163,52 @@ class AppMultiherramienta:
             self.tabs.select(self.tab_model_preview)
         self.txt_previa_modelo.pack_forget()
         self.lbl_previa_modelo.pack(expand=True, fill="both")
-        self.lbl_previa_modelo.config(image="", text=f"{ruta.name}\\n{ruta.stat().st_size:,} bytes")
+        tamano_archivo = ruta.stat().st_size
+        self.lbl_previa_modelo.config(image="", text=f"{ruta.name}\\n{tamano_archivo:,} bytes")
         self._img_previa_modelo = None
         ext = ruta.suffix.lower()
         if ext in (".ktx2", ".raw"):
             png = Path(tempfile.gettempdir()) / ("xxami_model_preview_" + str(abs(hash(str(ruta.resolve())))) + ".png")
+            motivo = None
             try:
-                if astc_raw_a_png(self, str(ruta), str(png)):
+                # Misma ruta de decodificación e información que usa la pestaña Texturas.
+                ok = astc_raw_a_png(self, str(ruta), str(png))
+                motivo = getattr(self, "_diagnostico_textura", {}).get(str(ruta))
+                if ok:
                     with Image.open(str(png)) as im:
                         im = im.convert("RGBA")
-                        im.thumbnail((700, 600), Image.Resampling.LANCZOS)
+                        dimensiones_png = im.size
+                        im.thumbnail((850, 680), Image.Resampling.LANCZOS)
                         self._img_previa_modelo = ImageTk.PhotoImage(im)
-                    self.lbl_previa_modelo.config(image=self._img_previa_modelo, text="")
+                    info = obtener_info_formato(str(ruta))
+                    codigo = obtener_codigo_formato(str(ruta))
+                    nombre_fmt = info["nombre"] if info else (f"fmt{codigo}" if codigo is not None else "desconocido")
+                    tipo = info["tipo"] if info else "formato no catalogado"
+                    extra = ""
+                    if ktx2_util and ktx2_util.es_ktx2(str(ruta)):
+                        ki = ktx2_util.info_textura(str(ruta))
+                        if ki:
+                            extra = f"\\nKTX2: {ki.resumen()}"
+                    detalle = f"{ruta.name}\\n{dimensiones_png[0]}×{dimensiones_png[1]} px · {nombre_fmt} · {tipo}\\n{tamano_archivo / 1024:.2f} KB{extra}"
+                    if motivo:
+                        detalle += f"\\n⚠ {motivo}"
+                    self.lbl_previa_modelo.config(image=self._img_previa_modelo, text=detalle, compound="top")
                 else:
-                    motivo = getattr(self, "_diagnostico_textura", {}).get(str(ruta), "No se pudo decodificar; revisa el log de diagnóstico.")
-                    self.lbl_previa_modelo.config(text=f"{ruta.name}\\nNo se pudo decodificar\\n{motivo}")
+                    motivo = motivo or "No se pudo decodificar; revisa el diagnóstico."
+                    info = obtener_info_formato(str(ruta))
+                    codigo = obtener_codigo_formato(str(ruta))
+                    nombre_fmt = info["nombre"] if info else (f"fmt{codigo}" if codigo is not None else "desconocido")
+                    extra = ""
+                    if ktx2_util and ktx2_util.es_ktx2(str(ruta)):
+                        try:
+                            ki = ktx2_util.leer_cabecera(str(ruta))
+                            fin_niveles = max((off + largo for off, largo, _ in ki.indice), default=0)
+                            extra = f"\\nKTX2: {ki.resumen()}\\nFin de nivel declarado: {fin_niveles:,} / tamaño real: {tamano_archivo:,} bytes"
+                        except Exception as e:
+                            extra = f"\\nCabecera KTX2: {e}"
+                    self.lbl_previa_modelo.config(text=f"{ruta.name}\\n{nombre_fmt} · {tamano_archivo / 1024:.2f} KB\\nNo se pudo decodificar: {motivo}{extra}", justify="center")
             except Exception as e:
-                self.lbl_previa_modelo.config(text=f"{ruta.name}\\nError: {e}")
+                self.lbl_previa_modelo.config(text=f"{ruta.name}\\n{tamano_archivo / 1024:.2f} KB\\nError: {type(e).__name__}: {e}", justify="center")
         elif ext in (".png", ".jpg", ".jpeg", ".bmp"):
             try:
                 with Image.open(str(ruta)) as im:
