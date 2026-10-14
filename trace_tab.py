@@ -586,11 +586,9 @@ class PestanaTrace:
             # Reutiliza exactamente el decodificador del visor (KTX2/RAW, ASTC/ETC2
             # y formatos planos), para que el exportador no tenga una segunda ruta
             # de decodificación con resultados distintos.
-            try:
-                from gui import astc_raw_a_png
-            except Exception as e:
-                astc_raw_a_png = None
-                errores.append(f"No se pudo cargar el decodificador de texturas: {e}")
+            decodificador = getattr(self.app, "decode_texture_to_png", None)
+            if decodificador is None:
+                errores.append("La aplicación no expone el decodificador de texturas; no se pudieron convertir los KTX2/RAW.")
 
             for tex in texturas:
                 nombre_tex = tex.name
@@ -599,7 +597,7 @@ class PestanaTrace:
                     slot = tex.stem
                 destino_png = ruta_obj.with_name(f"{ruta_obj.stem}_{slot}.png")
                 try:
-                    if astc_raw_a_png is None or not astc_raw_a_png(self.app, str(tex), str(destino_png)):
+                    if decodificador is None or not decodificador(str(tex), str(destino_png)):
                         errores.append(f"{nombre_tex}: no se pudo convertir a PNG")
                         continue
                     exportadas[slot.lower()] = destino_png.name
