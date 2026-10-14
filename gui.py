@@ -1192,10 +1192,9 @@ class AppMultiherramienta:
             if texto_filtro and texto_filtro not in lbl.lower(): continue
             if ruta.endswith('.spv'): self.lista_shaders.insert(tk.END, f" 📄 {lbl}")
             elif ruta.endswith(('.buf', '.txt', '.json')):
-                if ruta.endswith('.buf') and es_modelo_listable(ruta):
-                    self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
-                elif ruta.endswith(('.txt', '.json')):
-                    self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
+                # La vista de archivos sueltos permite abrir cualquier buffer y sus metadatos,
+                # no solo los buffers de vértices que pueden reconstruirse como malla.
+                self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
             elif ruta.endswith(('.raw', '.ktx2')): claves_texturas.append(lbl)
 
         # Límite de seguridad por GDI: cada miniatura necesita un PhotoImage, y eso
@@ -1345,6 +1344,14 @@ class AppMultiherramienta:
             self.ruta_obj_actual = ruta
             self.lbl_3d.config(text=f"Modelo Activo: {Path(ruta).name}")
             self.cargar_modelo_obj(ruta)
+        elif ruta.endswith(('.txt', '.json')):
+            try:
+                if hasattr(os, "startfile"):
+                    os.startfile(ruta)
+                else:
+                    subprocess.Popen([ruta])
+            except Exception as e:
+                messagebox.showerror("Abrir archivo", f"No se pudo abrir {Path(ruta).name}: {e}")
 
     def cargar_textura_desde_explorador(self, lbl):
         ruta = self.archivos_mapeados.get(lbl)
