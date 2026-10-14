@@ -706,7 +706,11 @@ def astc_raw_a_png(self, ruta_raw, ruta_png_temp, rapido=False):
         _registrar_diagnostico(self, ruta_raw, motivo_diagnostico)
         img_decodificada.save(ruta_png_temp)
         return Path(ruta_png_temp).exists()
-    except Exception:
+    except Exception as e:
+        try:
+            _registrar_diagnostico(self, ruta_raw, f"error de decodificación: {type(e).__name__}: {e}")
+        except Exception:
+            pass
         return False
 
 def png_a_astc_raw(ruta_png, ruta_raw_salida, bloque):
@@ -902,15 +906,29 @@ class AppMultiherramienta:
         self.cb_modelo_empaquetado.pack(side="left", fill="x", expand=True, padx=5)
         self.cb_modelo_empaquetado.bind("<<ComboboxSelected>>", lambda e: self._mostrar_archivos_modelo())
         ttk.Button(barra_paquete, text="Parsear volcado de modelo", command=self.parsear_volcado_modelo).pack(side="right")
-        marco_archivos_paquete = ttk.Frame(self.tab_modelo_empaquetado)
+        marco_archivos_paquete = ttk.PanedWindow(self.tab_modelo_empaquetado, orient="horizontal")
         marco_archivos_paquete.pack(expand=True, fill="both")
-        sb_paquete = ttk.Scrollbar(marco_archivos_paquete, orient="vertical")
-        self.lista_archivos_modelo = tk.Listbox(marco_archivos_paquete, yscrollcommand=sb_paquete.set,
-                                                font=("Consolas", 9), background="#2b2b2b", foreground="#ffffff")
+        marco_lista_paquete = ttk.Frame(marco_archivos_paquete)
+        sb_paquete = ttk.Scrollbar(marco_lista_paquete, orient="vertical")
+        self.lista_archivos_modelo = tk.Listbox(marco_lista_paquete, yscrollcommand=sb_paquete.set,
+                                                font=("Consolas", 9), background="#2b2b2b", foreground="#ffffff",
+                                                exportselection=False)
         sb_paquete.config(command=self.lista_archivos_modelo.yview)
         sb_paquete.pack(side="right", fill="y")
         self.lista_archivos_modelo.pack(side="left", expand=True, fill="both")
-        self.lista_archivos_modelo.bind("<<Double-Button-1>>", lambda e: self._abrir_archivo_modelo_seleccionado())
+        self.lista_archivos_modelo.bind("<<ListboxSelect>>", lambda e: self._previsualizar_archivo_modelo())
+        self.lista_archivos_modelo.bind("<Double-Button-1>", lambda e: self._abrir_archivo_modelo_seleccionado())
+        marco_previa_paquete = ttk.Frame(marco_archivos_paquete)
+        self.lbl_previa_modelo = tk.Label(marco_previa_paquete, text="Selecciona un recurso para previsualizarlo",
+                                           background="#111111", foreground="#dddddd", anchor="center")
+        self.lbl_previa_modelo.pack(expand=True, fill="both")
+        self.txt_previa_modelo = tk.Text(marco_previa_paquete, wrap="none", font=("Consolas", 9),
+                                         background="#1e1e1e", foreground="#d4d4d4")
+        self.txt_previa_modelo.pack(expand=True, fill="both")
+        self.txt_previa_modelo.pack_forget()
+        marco_archivos_paquete.add(marco_lista_paquete, weight=2)
+        marco_archivos_paquete.add(marco_previa_paquete, weight=3)
+        self._img_previa_modelo = None
 # Parte 7
         fl_t = ttk.Frame(self.tab_sub_texturas)
         fl_t.pack(expand=True, fill="both")
@@ -1132,6 +1150,61 @@ class AppMultiherramienta:
             return
         for ruta in sorted((p for p in carpeta.rglob("*") if p.is_file()), key=lambda p: str(p).lower()):
             self.lista_archivos_modelo.insert(tk.END, str(ruta.relative_to(carpeta)))
+
+    def _previsualizar_archivo_modelo(self):
+        sel = self.lista_archivos_modelo.curselection()
+        carpeta = self._ruta_modelo_empaquetado()
+        if not sel or not carpeta:
+            return
+        ruta = carpeta / self.lista_archivos_modelo.get(sel[0])
+        if not ruta.is_file():
+            return
+        self.txt_previa_modelo.pack_forget()
+        self.lbl_previa_modelo.pack(expand=True, fill="both")
+        self.lbl_previa_modelo.config(image="", text=f"{ruta.name}\\n{ruta.stat().st_size:,} bytes")
+        self._img_previa_modelo = None
+        ext = ruta.suffix.lower()
+        if ext in (".ktx2", ".raw"):
+            png = Path(tempfile.gettempdir()) / ("xxami_model_preview_" + str(abs(hash(str(ruta.resolve())))) + ".png")
+            try:
+                if astc_raw_a_png(self, str(ruta), str(png)):
+                    with Image.open(str(png)) as im:
+                        im = im.convert("RGBA")
+                        im.thumbnail((700, 600), Image.Resampling.LANCZOS)
+                        self._img_previa_modelo = ImageTk.PhotoImage(im)
+                    self.lbl_previa_modelo.config(image=self._img_previa_modelo, text="")
+                else:
+                    motivo = getattr(self, "_diagnostico_textura", {}).get(str(ruta), "No se pudo decodificar; revisa el log de diagnóstico.")
+                    self.lbl_previa_modelo.config(text=f"{ruta.name}\\nNo se pudo decodificar\\n{motivo}")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"{ruta.name}\\nError: {e}")
+        elif ext in (".png", ".jpg", ".jpeg", ".bmp"):
+            try:
+                with Image.open(str(ruta)) as im:
+                    im = im.convert("RGBA")
+                    im.thumbnail((700, 600), Image.Resampling.LANCZOS)
+                    self._img_previa_modelo = ImageTk.PhotoImage(im)
+                self.lbl_previa_modelo.config(image=self._img_previa_modelo, text="")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"No se pudo abrir imagen: {e}")
+        elif ext in (".txt", ".json"):
+            try:
+                contenido = ruta.read_text(encoding="utf-8", errors="replace")
+                self.lbl_previa_modelo.pack_forget()
+                self.txt_previa_modelo.pack(expand=True, fill="both")
+                self.txt_previa_modelo.config(state="normal")
+                self.txt_previa_modelo.delete("1.0", tk.END)
+                self.txt_previa_modelo.insert("1.0", contenido[:200000])
+                self.txt_previa_modelo.config(state="disabled")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"No se pudo leer texto: {e}")
+        elif ext == ".buf":
+            try:
+                data = ruta.read_bytes()
+                preview = data[:512].hex(" ")
+                self.lbl_previa_modelo.config(text=f"{ruta.name}\\n{len(data):,} bytes\\nPrimeros 512 bytes (hex):\\n{preview}")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"No se pudo leer buffer: {e}")
 
     def _abrir_archivo_modelo_seleccionado(self):
         sel = self.lista_archivos_modelo.curselection()
