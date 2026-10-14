@@ -879,7 +879,14 @@ class AppMultiherramienta:
         self.lista_shaders.pack(side="left", expand=True, fill="both")
         self.lista_shaders.bind("<<ListboxSelect>>", lambda e: self.on_seleccionar_lista(self.lista_shaders))
         
-        fl_m = ttk.Frame(self.tab_sub_modelos)
+        self.nb_modelos = ttk.Notebook(self.tab_sub_modelos)
+        self.nb_modelos.pack(expand=True, fill="both")
+        self.tab_archivos_sueltos = ttk.Frame(self.nb_modelos)
+        self.tab_modelo_empaquetado = ttk.Frame(self.nb_modelos)
+        self.nb_modelos.add(self.tab_archivos_sueltos, text="Archivos sueltos")
+        self.nb_modelos.add(self.tab_modelo_empaquetado, text="Modelo empaquetado")
+
+        fl_m = ttk.Frame(self.tab_archivos_sueltos)
         fl_m.pack(expand=True, fill="both")
         sl_m = ttk.Scrollbar(fl_m, orient="vertical")
         self.lista_modelos = tk.Listbox(fl_m, yscrollcommand=sl_m.set, font=("Consolas", 9), background="#2b2b2b", foreground="#ffffff")
@@ -887,6 +894,23 @@ class AppMultiherramienta:
         sl_m.pack(side="right", fill="y")
         self.lista_modelos.pack(side="left", expand=True, fill="both")
         self.lista_modelos.bind("<<ListboxSelect>>", lambda e: self.on_seleccionar_lista(self.lista_modelos))
+
+        barra_paquete = ttk.Frame(self.tab_modelo_empaquetado, padding=4)
+        barra_paquete.pack(fill="x")
+        ttk.Label(barra_paquete, text="Modelo:").pack(side="left")
+        self.cb_modelo_empaquetado = ttk.Combobox(barra_paquete, state="readonly")
+        self.cb_modelo_empaquetado.pack(side="left", fill="x", expand=True, padx=5)
+        self.cb_modelo_empaquetado.bind("<<ComboboxSelected>>", lambda e: self._mostrar_archivos_modelo())
+        ttk.Button(barra_paquete, text="Parsear volcado de modelo", command=self.parsear_volcado_modelo).pack(side="right")
+        marco_archivos_paquete = ttk.Frame(self.tab_modelo_empaquetado)
+        marco_archivos_paquete.pack(expand=True, fill="both")
+        sb_paquete = ttk.Scrollbar(marco_archivos_paquete, orient="vertical")
+        self.lista_archivos_modelo = tk.Listbox(marco_archivos_paquete, yscrollcommand=sb_paquete.set,
+                                                font=("Consolas", 9), background="#2b2b2b", foreground="#ffffff")
+        sb_paquete.config(command=self.lista_archivos_modelo.yview)
+        sb_paquete.pack(side="right", fill="y")
+        self.lista_archivos_modelo.pack(side="left", expand=True, fill="both")
+        self.lista_archivos_modelo.bind("<<Double-Button-1>>", lambda e: self._abrir_archivo_modelo_seleccionado())
 # Parte 7
         fl_t = ttk.Frame(self.tab_sub_texturas)
         fl_t.pack(expand=True, fill="both")
@@ -999,6 +1023,7 @@ class AppMultiherramienta:
     def cargar_carpeta(self):
         dir_raiz = filedialog.askdirectory()
         if dir_raiz:
+            self.dir_raiz_volcado = Path(dir_raiz)
             self.entry_busqueda.delete(0, tk.END)
             self.archivos_mapeados.clear()
             self.texturas_reemplazadas.clear()
@@ -1060,9 +1085,104 @@ class AppMultiherramienta:
                 if lbl in self.archivos_mapeados: lbl = f"{p.parent.parent.name}/{p.parent.name}/{p.name}"
                 self.archivos_mapeados[lbl] = str(p)
             self.actualizar_interfaz_explorador()
+            self._cargar_modelos_empaquetados()
             if getattr(self, "pestana_trace", None):
                 try: self.pestana_trace.cargar_raiz(dir_raiz)
                 except Exception: _log(traceback.format_exc())
+
+    def _cargar_modelos_empaquetados(self):
+        """Indexa Models/Model_NN de todas las capturas sin duplicar entradas por cada Part."""
+        self._modelos_empaquetados = {}
+        if not hasattr(self, "cb_modelo_empaquetado"):
+            return
+        self.cb_modelo_empaquetado.set("")
+        self.cb_modelo_empaquetado["values"] = ()
+        self.lista_archivos_modelo.delete(0, tk.END)
+        raiz = getattr(self, "dir_raiz_volcado", None)
+        if not raiz or not raiz.exists():
+            return
+        for carpeta_models in sorted(raiz.rglob("Models"), key=lambda p: str(p).lower()):
+            if not carpeta_models.is_dir():
+                continue
+            submodelos = sorted((p for p in carpeta_models.iterdir() if p.is_dir() and re.match(r"^Model_\\d+$", p.name, re.I)),
+                                key=lambda p: p.name.lower())
+            if submodelos:
+                for sub in submodelos:
+                    etiqueta = str(sub.relative_to(raiz))
+                    self._modelos_empaquetados[etiqueta] = sub
+            elif any(p.is_file() and p.name.lower().startswith("part") and p.suffix.lower() == ".buf" for p in carpeta_models.iterdir()):
+                etiqueta = str(carpeta_models.relative_to(raiz))
+                self._modelos_empaquetados[etiqueta] = carpeta_models
+        valores = list(self._modelos_empaquetados)
+        self.cb_modelo_empaquetado["values"] = valores
+        if valores:
+            self.cb_modelo_empaquetado.current(0)
+            self._mostrar_archivos_modelo()
+        else:
+            self.lista_archivos_modelo.insert(tk.END, "(No se encontraron Models/Model_NN en esta carpeta)")
+
+    def _ruta_modelo_empaquetado(self):
+        etiqueta = self.cb_modelo_empaquetado.get()
+        return getattr(self, "_modelos_empaquetados", {}).get(etiqueta)
+
+    def _mostrar_archivos_modelo(self):
+        self.lista_archivos_modelo.delete(0, tk.END)
+        carpeta = self._ruta_modelo_empaquetado()
+        if not carpeta:
+            return
+        for ruta in sorted((p for p in carpeta.rglob("*") if p.is_file()), key=lambda p: str(p).lower()):
+            self.lista_archivos_modelo.insert(tk.END, str(ruta.relative_to(carpeta)))
+
+    def _abrir_archivo_modelo_seleccionado(self):
+        sel = self.lista_archivos_modelo.curselection()
+        carpeta = self._ruta_modelo_empaquetado()
+        if not sel or not carpeta:
+            return
+        ruta = carpeta / self.lista_archivos_modelo.get(sel[0])
+        if ruta.is_file():
+            self.abrir_archivo_por_ruta(str(ruta))
+
+    def parsear_volcado_modelo(self):
+        """Convierte texturas KTX2/RAW del modelo a PNG, conservando originales y nombres/slots."""
+        carpeta = self._ruta_modelo_empaquetado()
+        if not carpeta or not carpeta.is_dir():
+            messagebox.showinfo("Parsear volcado de modelo", "Selecciona un modelo empaquetado válido.")
+            return
+        decodificador = getattr(self, "decode_texture_to_png", None)
+        if decodificador is None:
+            messagebox.showerror("Parsear volcado de modelo", "El decodificador de texturas no está disponible.")
+            return
+        texturas = sorted((p for p in carpeta.rglob("*") if p.is_file() and p.suffix.lower() in (".ktx2", ".raw")),
+                          key=lambda p: str(p).lower())
+        if not texturas:
+            messagebox.showinfo("Parsear volcado de modelo", "Este modelo no contiene texturas .ktx2 ni .raw.")
+            return
+        convertidas, omitidas, errores = 0, 0, []
+        hashes_vistos = set()
+        for textura in texturas:
+            # Reutilizar una conversión del mismo hash dentro del modelo evita PNG duplicados.
+            hash_tex = extraer_hash_textura(textura.name)
+            clave = hash_tex.lower() if hash_tex else textura.stem.lower()
+            destino = textura.with_suffix(".png")
+            if clave in hashes_vistos:
+                omitidas += 1
+                continue
+            hashes_vistos.add(clave)
+            try:
+                if destino.exists():
+                    omitidas += 1
+                    continue
+                if decodificador(str(textura), str(destino)):
+                    convertidas += 1
+                else:
+                    errores.append(f"{textura.name}: el decodificador no pudo convertirla")
+            except Exception as e:
+                errores.append(f"{textura.name}: {e}")
+        self._mostrar_archivos_modelo()
+        resumen = f"PNG creados: {convertidas}. Ya existentes/duplicados omitidos: {omitidas}."
+        if errores:
+            resumen += "\\n\\nAvisos:\\n" + "\\n".join(errores[:12])
+        messagebox.showinfo("Parsear volcado de modelo", resumen)
 
     def actualizar_interfaz_explorador(self):
         self.lista_shaders.delete(0, tk.END)
