@@ -100,7 +100,6 @@ class PestanaTrace:
         self.cb_modo.set("Alambre")
         self.cb_modo.pack(side="left", padx=(2, 8))
         self.cb_modo.bind("<<ComboboxSelected>>", self._seguro(lambda e=None: self._redibujar(forzar=True)))
-        ttk.Button(barra, text="Exportar OBJ", command=self._seguro(self.exportar_obj)).pack(side="left", padx=4)
         self.lbl_estado = ttk.Label(barra, text="Elige una captura en la pestaña lateral «Frames»", font=("Arial", 9, "italic"))
         self.lbl_estado.pack(side="right", padx=10)
 
@@ -565,80 +564,3 @@ class PestanaTrace:
         self.zoom = max(0.1, min(20.0, self.zoom * (1.1 if e.delta > 0 else 1 / 1.1)))
         self._redibujar()
 
-    # ------------------------------------------------------------------ exportar
-    def exportar_obj(self):
-        if self.malla is None or self.malla.vacia or not len(self.malla.caras):
-            messagebox.showinfo("Exportar OBJ", "No hay una malla de triángulos para exportar.")
-            return
-        info = getattr(self.malla, "info", {}) or {}
-        parte = info.get("parte")
-        nombre = f"{parte or ('draw_' + str(self.draw.idx if self.draw else 0))}.obj"
-        ruta = filedialog.asksaveasfilename(initialfile=nombre, defaultextension=".obj", filetypes=[("OBJ", "*.obj")])
-        if not ruta:
-            return
-
-        ruta_obj = Path(ruta)
-        n = X.exportar_obj(self.malla, ruta, nombre=ruta_obj.stem)
-        texturas = info.get("texturas", [])
-        exportadas = {}
-        errores = []
-        if parte and texturas:
-            # Reutiliza exactamente el decodificador del visor (KTX2/RAW, ASTC/ETC2
-            # y formatos planos), para que el exportador no tenga una segunda ruta
-            # de decodificación con resultados distintos.
-            decodificador = getattr(self.app, "decode_texture_to_png", None)
-            if decodificador is None:
-                errores.append("La aplicación no expone el decodificador de texturas; no se pudieron convertir los KTX2/RAW.")
-
-            for tex in texturas:
-                nombre_tex = tex.name
-                slot = nombre_tex[len(parte):].rsplit(".", 1)[0]
-                if not slot:
-                    slot = tex.stem
-                destino_png = ruta_obj.with_name(f"{ruta_obj.stem}_{slot}.png")
-                try:
-                    if decodificador is None or not decodificador(str(tex), str(destino_png)):
-                        errores.append(f"{nombre_tex}: no se pudo convertir a PNG")
-                        continue
-                    exportadas[slot.lower()] = destino_png.name
-                except Exception as e:
-                    errores.append(f"{nombre_tex}: {e}")
-
-            # El OBJ referencia el MTL; Blender cargará automáticamente el mapa difuso.
-            # Los demás mapas se conservan como PNG junto al modelo y se anotan en el
-            # MTL sin asumir una semántica de shader que el hash.json no demuestra.
-            if exportadas:
-                ruta_mtl = ruta_obj.with_suffix(".mtl")
-                lineas_mtl = [
-                    "# Materiales exportados por XXAMI",
-                    "newmtl XXAMI_Material",
-                    "Ka 1.000000 1.000000 1.000000",
-                    "Kd 1.000000 1.000000 1.000000",
-                    "Ks 0.000000 0.000000 0.000000",
-                    "d 1.0",
-                    "illum 1",
-                ]
-                if "diffuse" in exportadas:
-                    lineas_mtl.append(f"map_Kd {exportadas['diffuse']}")
-                # No enlazamos BumpMap como mapa de relieve: en volcados ya verificados
-                # ese slot puede contener albedo/diffuse pese a su nombre.
-                for slot, archivo in sorted(exportadas.items()):
-                    if slot != "diffuse":
-                        lineas_mtl.append(f"# Slot {slot}: {archivo}")
-                ruta_mtl.write_text("\\n".join(lineas_mtl) + "\\n", encoding="utf-8")
-                try:
-                    contenido = ruta_obj.read_text(encoding="utf-8")
-                    lineas = contenido.splitlines()
-                    pos = 1 if lineas and lineas[0].startswith("#") else 0
-                    lineas[pos:pos] = [f"mtllib {ruta_mtl.name}", "usemtl XXAMI_Material"]
-                    ruta_obj.write_text("\\n".join(lineas) + "\\n", encoding="utf-8")
-                except Exception as e:
-                    errores.append(f"No se pudo enlazar el material al OBJ: {e}")
-
-        resumen = f"{n} triángulos guardados."
-        if exportadas:
-            resumen += f"\\nTexturas PNG exportadas: {len(exportadas)}."
-            resumen += "\\nSe creó un MTL; Diffuse y BumpMap se enlazan cuando están presentes."
-        if errores:
-            resumen += "\\n\\nAvisos:\\n" + "\\n".join(errores[:10])
-        messagebox.showinfo("Exportar OBJ", resumen)
