@@ -906,9 +906,8 @@ class AppMultiherramienta:
         self.cb_modelo_empaquetado.pack(side="left", fill="x", expand=True, padx=5)
         self.cb_modelo_empaquetado.bind("<<ComboboxSelected>>", lambda e: self._mostrar_archivos_modelo())
         ttk.Button(barra_paquete, text="Parsear volcado de modelo", command=self.parsear_volcado_modelo).pack(side="right")
-        marco_archivos_paquete = ttk.PanedWindow(self.tab_modelo_empaquetado, orient="horizontal")
-        marco_archivos_paquete.pack(expand=True, fill="both")
-        marco_lista_paquete = ttk.Frame(marco_archivos_paquete)
+        marco_lista_paquete = ttk.Frame(self.tab_modelo_empaquetado)
+        marco_lista_paquete.pack(expand=True, fill="both")
         sb_paquete = ttk.Scrollbar(marco_lista_paquete, orient="vertical")
         self.lista_archivos_modelo = tk.Listbox(marco_lista_paquete, yscrollcommand=sb_paquete.set,
                                                 font=("Consolas", 9), background="#2b2b2b", foreground="#ffffff",
@@ -918,16 +917,6 @@ class AppMultiherramienta:
         self.lista_archivos_modelo.pack(side="left", expand=True, fill="both")
         self.lista_archivos_modelo.bind("<<ListboxSelect>>", lambda e: self._previsualizar_archivo_modelo())
         self.lista_archivos_modelo.bind("<Double-Button-1>", lambda e: self._abrir_archivo_modelo_seleccionado())
-        marco_previa_paquete = ttk.Frame(marco_archivos_paquete)
-        self.lbl_previa_modelo = tk.Label(marco_previa_paquete, text="Selecciona un recurso para previsualizarlo",
-                                           background="#111111", foreground="#dddddd", anchor="center")
-        self.lbl_previa_modelo.pack(expand=True, fill="both")
-        self.txt_previa_modelo = tk.Text(marco_previa_paquete, wrap="none", font=("Consolas", 9),
-                                         background="#1e1e1e", foreground="#d4d4d4")
-        self.txt_previa_modelo.pack(expand=True, fill="both")
-        self.txt_previa_modelo.pack_forget()
-        marco_archivos_paquete.add(marco_lista_paquete, weight=2)
-        marco_archivos_paquete.add(marco_previa_paquete, weight=3)
         self._img_previa_modelo = None
 # Parte 7
         fl_t = ttk.Frame(self.tab_sub_texturas)
@@ -955,6 +944,17 @@ class AppMultiherramienta:
         self.tabs.add(self.tab_s, text=" Editor Shader SPIR-V ")
         self.tabs.add(self.tab_a, text=" Visor / Conversor Texturas RAW ASTC ")
         self.tabs.add(self.tab_3d, text=" Visor Geometría 3D (.OBJ) ")
+        self.tab_model_preview = ttk.Frame(self.tabs)
+        self.tabs.add(self.tab_model_preview, text=" Vista previa modelo ")
+        marco_previa_modelo = ttk.Frame(self.tab_model_preview)
+        marco_previa_modelo.pack(expand=True, fill="both", padx=6, pady=6)
+        self.lbl_previa_modelo = tk.Label(marco_previa_modelo, text="Selecciona un recurso en Modelos para previsualizarlo",
+                                           background="#111111", foreground="#dddddd", anchor="center")
+        self.lbl_previa_modelo.pack(expand=True, fill="both")
+        self.txt_previa_modelo = tk.Text(marco_previa_modelo, wrap="none", font=("Consolas", 10),
+                                         background="#1e1e1e", foreground="#d4d4d4")
+        self.txt_previa_modelo.pack(expand=True, fill="both")
+        self.txt_previa_modelo.pack_forget()
         self.tabs.pack(side="right", expand=True, fill="both", padx=5, pady=5)
         self.thumb_refs = []
 # Parte 8
@@ -1159,6 +1159,8 @@ class AppMultiherramienta:
         ruta = carpeta / self.lista_archivos_modelo.get(sel[0])
         if not ruta.is_file():
             return
+        if hasattr(self, "tabs") and hasattr(self, "tab_model_preview"):
+            self.tabs.select(self.tab_model_preview)
         self.txt_previa_modelo.pack_forget()
         self.lbl_previa_modelo.pack(expand=True, fill="both")
         self.lbl_previa_modelo.config(image="", text=f"{ruta.name}\\n{ruta.stat().st_size:,} bytes")
