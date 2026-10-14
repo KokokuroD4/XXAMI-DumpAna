@@ -570,8 +570,77 @@ class PestanaTrace:
         if self.malla is None or self.malla.vacia or not len(self.malla.caras):
             messagebox.showinfo("Exportar OBJ", "No hay una malla de triángulos para exportar.")
             return
-        nombre = f"draw_{self.draw.idx}.obj"
+        info = getattr(self.malla, "info", {}) or {}
+        parte = info.get("parte")
+        nombre = f"{parte or ('draw_' + str(self.draw.idx if self.draw else 0))}.obj"
         ruta = filedialog.asksaveasfilename(initialfile=nombre, defaultextension=".obj", filetypes=[("OBJ", "*.obj")])
-        if ruta:
-            n = X.exportar_obj(self.malla, ruta, nombre=Path(ruta).stem)
-            messagebox.showinfo("Exportar OBJ", f"{n} triángulos guardados.")
+        if not ruta:
+            return
+
+        ruta_obj = Path(ruta)
+        n = X.exportar_obj(self.malla, ruta, nombre=ruta_obj.stem)
+        texturas = info.get("texturas", [])
+        exportadas = {}
+        errores = []
+        if parte and texturas:
+            # Reutiliza exactamente el decodificador del visor (KTX2/RAW, ASTC/ETC2
+            # y formatos planos), para que el exportador no tenga una segunda ruta
+            # de decodificación con resultados distintos.
+            try:
+                from gui import astc_raw_a_png
+            except Exception as e:
+                astc_raw_a_png = None
+                errores.append(f"No se pudo cargar el decodificador de texturas: {e}")
+
+            for tex in texturas:
+                nombre_tex = tex.name
+                slot = nombre_tex[len(parte):].rsplit(".", 1)[0]
+                if not slot:
+                    slot = tex.stem
+                destino_png = ruta_obj.with_name(f"{ruta_obj.stem}_{slot}.png")
+                try:
+                    if astc_raw_a_png is None or not astc_raw_a_png(self.app, str(tex), str(destino_png)):
+                        errores.append(f"{nombre_tex}: no se pudo convertir a PNG")
+                        continue
+                    exportadas[slot.lower()] = destino_png.name
+                except Exception as e:
+                    errores.append(f"{nombre_tex}: {e}")
+
+            # El OBJ referencia el MTL; Blender cargará automáticamente el mapa difuso.
+            # Los demás mapas se conservan como PNG junto al modelo y se anotan en el
+            # MTL sin asumir una semántica de shader que el hash.json no demuestra.
+            if exportadas:
+                ruta_mtl = ruta_obj.with_suffix(".mtl")
+                lineas_mtl = [
+                    "# Materiales exportados por XXAMI",
+                    "newmtl XXAMI_Material",
+                    "Ka 1.000000 1.000000 1.000000",
+                    "Kd 1.000000 1.000000 1.000000",
+                    "Ks 0.000000 0.000000 0.000000",
+                    "d 1.0",
+                    "illum 1",
+                ]
+                if "diffuse" in exportadas:
+                    lineas_mtl.append(f"map_Kd {exportadas['diffuse']}")
+                if "bumpmap" in exportadas:
+                    lineas_mtl.append(f"map_Bump {exportadas['bumpmap']}")
+                for slot, archivo in sorted(exportadas.items()):
+                    if slot not in ("diffuse", "bumpmap"):
+                        lineas_mtl.append(f"# Slot {slot}: {archivo}")
+                ruta_mtl.write_text("\\n".join(lineas_mtl) + "\\n", encoding="utf-8")
+                try:
+                    contenido = ruta_obj.read_text(encoding="utf-8")
+                    lineas = contenido.splitlines()
+                    pos = 1 if lineas and lineas[0].startswith("#") else 0
+                    lineas[pos:pos] = [f"mtllib {ruta_mtl.name}", "usemtl XXAMI_Material"]
+                    ruta_obj.write_text("\\n".join(lineas) + "\\n", encoding="utf-8")
+                except Exception as e:
+                    errores.append(f"No se pudo enlazar el material al OBJ: {e}")
+
+        resumen = f"{n} triángulos guardados."
+        if exportadas:
+            resumen += f"\\nTexturas PNG exportadas: {len(exportadas)}."
+            resumen += "\\nSe creó un MTL; Diffuse y BumpMap se enlazan cuando están presentes."
+        if errores:
+            resumen += "\\n\\nAvisos:\\n" + "\\n".join(errores[:10])
+        messagebox.showinfo("Exportar OBJ", resumen)
