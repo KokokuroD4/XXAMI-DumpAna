@@ -620,10 +620,10 @@ class PestanaTrace:
                 ]
                 if "diffuse" in exportadas:
                     lineas_mtl.append(f"map_Kd {exportadas['diffuse']}")
-                if "bumpmap" in exportadas:
-                    lineas_mtl.append(f"map_Bump {exportadas['bumpmap']}")
+                # No enlazamos BumpMap como mapa de relieve: en volcados ya verificados
+                # ese slot puede contener albedo/diffuse pese a su nombre.
                 for slot, archivo in sorted(exportadas.items()):
-                    if slot not in ("diffuse", "bumpmap"):
+                    if slot != "diffuse":
                         lineas_mtl.append(f"# Slot {slot}: {archivo}")
                 ruta_mtl.write_text("\\n".join(lineas_mtl) + "\\n", encoding="utf-8")
                 try:
