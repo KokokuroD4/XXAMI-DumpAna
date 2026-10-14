@@ -815,6 +815,8 @@ def aplicar_tema_oscuro(root):
 class AppMultiherramienta:
     def __init__(self, root):
         self.root = root
+        # El exportador de modelos reutiliza el mismo decodificador que el visor.
+        self.decode_texture_to_png = lambda ruta, salida: astc_raw_a_png(self, ruta, salida)
         self.root.title("XXAMI: DUMP Manager")
         self.root.geometry("1250x780")
         self.ruta_spv_actual, self.ruta_raw_actual, self.ruta_obj_actual, self.archivos_mapeados = None, None, None, {}
