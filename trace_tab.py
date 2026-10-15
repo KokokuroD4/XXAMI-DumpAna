@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 import xxami_trace as X
 
@@ -127,6 +127,7 @@ class PestanaTrace:
 
         self.lbl_img.bind("<ButtonPress-1>", self._seguro(self._inicio_arrastre))
         self.lbl_img.bind("<B1-Motion>", self._seguro(self._arrastrar))
+        self.lbl_img.bind("<ButtonRelease-1>", self._seguro(self._fin_arrastre))
         self.lbl_img.bind("<MouseWheel>", self._seguro(self._rueda))
         self.lbl_img.bind("<Configure>", self._seguro(lambda e=None: self._redibujar(forzar=True)))
 
@@ -719,12 +720,23 @@ class PestanaTrace:
         w, h = self._tam_imagen()
         # La rasterización UV es costosa por triángulo. Limitar la cantidad
         # durante la vista interactiva mantiene la rotación fluida en modelos grandes.
-        limite = 12000 if modo_render == "material" else 120000
+        interactivo = self._arrastre is not None
+        if modo_render == "material" and interactivo:
+            w, h = max(240, w // 2), max(180, h // 2)
+            limite = 1800
+        elif modo_render == "material":
+            limite = 5000
+        else:
+            limite = 120000
         self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom,
                                         modo_render, max_elementos=limite, textura_material=textura))
 
     def _inicio_arrastre(self, e):
         self._arrastre = (e.x, e.y)
+
+    def _fin_arrastre(self, _e=None):
+        self._arrastre = None
+        self._redibujar(forzar=True)
 
     def _arrastrar(self, e):
         if self._arrastre is None:
