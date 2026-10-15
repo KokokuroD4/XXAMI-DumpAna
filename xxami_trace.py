@@ -762,7 +762,7 @@ def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0,
         for i in np.flatnonzero(ok)[:max_elementos]:
             dib.point((float(X[i]), float(Y[i])), fill=(0, 255, 102))
         return img
-    if modo == "solido" and len(caras):
+    if modo in ("solido", "material") and len(caras):
         if len(caras) > max_elementos:
             caras = caras[:: int(np.ceil(len(caras) / max_elementos))]
         A, B, C = P[caras[:, 0]], P[caras[:, 1]], P[caras[:, 2]]
@@ -777,6 +777,51 @@ def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0,
         nz = n[:, 1] * sx + nz0 * cx
         luz = np.abs(nz) * 0.75 + 0.25
         prof = z2[caras].mean(axis=1)
+        if modo == "material" and textura_material is not None and malla.uv is not None and len(malla.uv) == len(malla.pos):
+            # Rasterización UV por triángulo con interpolación baricéntrica y alpha real.
+            tex = textura_material.convert("RGBA")
+            tw, th = tex.size
+            pix = np.asarray(tex, dtype=np.uint8)
+            canvas = np.asarray(img.convert("RGBA"), dtype=np.uint8).copy()
+            for k in np.argsort(-prof):
+                t = caras[k]
+                pts = np.array([[X[t[0]], Y[t[0]]], [X[t[1]], Y[t[1]]], [X[t[2]], Y[t[2]]]], dtype=np.float64)
+                uv = malla.uv[t].astype(np.float64).copy()
+                if not np.isfinite(pts).all() or not np.isfinite(uv).all():
+                    continue
+                xlo = max(0, int(np.floor(pts[:, 0].min())))
+                xhi = min(ancho - 1, int(np.ceil(pts[:, 0].max())))
+                ylo = max(0, int(np.floor(pts[:, 1].min())))
+                yhi = min(alto - 1, int(np.ceil(pts[:, 1].max())))
+                if xhi < xlo or yhi < ylo:
+                    continue
+                den = ((pts[1,1]-pts[2,1])*(pts[0,0]-pts[2,0]) +
+                       (pts[2,0]-pts[1,0])*(pts[0,1]-pts[2,1]))
+                if abs(den) < 1e-8:
+                    continue
+                gx, gy = np.meshgrid(np.arange(xlo, xhi+1), np.arange(ylo, yhi+1))
+                w0 = ((pts[1,1]-pts[2,1])*(gx-pts[2,0]) +
+                      (pts[2,0]-pts[1,0])*(gy-pts[2,1])) / den
+                w1 = ((pts[2,1]-pts[0,1])*(gx-pts[2,0]) +
+                      (pts[0,0]-pts[2,0])*(gy-pts[2,1])) / den
+                w2 = 1.0 - w0 - w1
+                mask = (w0 >= -1e-5) & (w1 >= -1e-5) & (w2 >= -1e-5)
+                if not mask.any():
+                    continue
+                u = (w0*uv[0,0] + w1*uv[1,0] + w2*uv[2,0]) % 1.0
+                v = (w0*uv[0,1] + w1*uv[1,1] + w2*uv[2,1]) % 1.0
+                tx = np.minimum((u*tw).astype(np.int64), tw-1)
+                ty = np.minimum((v*th).astype(np.int64), th-1)
+                rgba = pix[ty, tx].astype(np.float64)
+                shade = float(luz[k])
+                rgba[..., :3] *= shade
+                alpha = rgba[..., 3] / 255.0
+                region = canvas[ylo:yhi+1, xlo:xhi+1]
+                for ch in range(3):
+                    region[..., ch][mask] = (rgba[..., ch][mask] * alpha[mask] +
+                                               region[..., ch][mask] * (1.0-alpha[mask])).astype(np.uint8)
+                region[..., 3][mask] = 255
+            return Image.fromarray(canvas, "RGBA").convert("RGB")
         for k in np.argsort(-prof):  # del más lejano al más cercano (algoritmo del pintor)
             t = caras[k]
             g = int(40 + 200 * float(luz[k]))
