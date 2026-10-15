@@ -568,8 +568,11 @@ class PestanaTrace:
         self._material_panel.pack_propagate(False)
         cab = tk.Frame(self._material_panel, bg="#171717")
         cab.pack(fill="x", padx=4, pady=(3, 1))
-        tk.Label(cab, text="◉", bg="#171717", fg="#ffffff").pack(side="left", padx=(2, 8))
-        tk.Label(cab, text="Materiales", bg="#171717", fg="#ffffff").pack(side="left")
+        tk.Label(cab, text="◉", bg="#171717", fg="#ffffff", width=2).grid(row=0, column=0, sticky="w")
+        tk.Label(cab, text="Materiales", bg="#171717", fg="#ffffff", anchor="w").grid(row=0, column=1, sticky="w")
+        tk.Label(cab, image=self._iconos_material.get("visibilidad"), bg="#171717", width=28, height=24).grid(row=0, column=2, padx=(5, 2))
+        tk.Label(cab, image=self._iconos_material.get("alpha"), bg="#171717", width=28, height=24).grid(row=0, column=3, padx=(2, 5))
+        cab.grid_columnconfigure(1, weight=1)
         self._material_lista = tk.Frame(self._material_panel, bg="#171717")
         self._material_lista.pack(fill="both", expand=True, padx=4, pady=3)
         self._material_panel.place(relx=1.0, x=-12, y=12, anchor="ne")
@@ -682,16 +685,18 @@ class PestanaTrace:
             activo = tk.BooleanVar(value=True)
             invertir = tk.BooleanVar(value=False)
             self._material_vars[ruta] = (activo, invertir)
-            tk.Checkbutton(fila, variable=activo, image=self._iconos_material.get("visibilidad"),
-                           compound="left", bg="#171717", activebackground="#171717",
-                           selectcolor="#303030", padx=2,
-                           command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
-            tk.Checkbutton(fila, variable=invertir, image=self._iconos_material.get("alpha"),
-                           compound="left", bg="#171717", activebackground="#171717",
-                           selectcolor="#303030", padx=2,
-                           command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
-            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=25).pack(side="left")
-        self._material_panel.configure(width=330, height=min(300, 42 + 27 * len(candidatos)))
+            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=28).grid(row=0, column=0, sticky="w")
+            tk.Checkbutton(fila, variable=activo, bg="#171717", activebackground="#171717",
+                           fg="#ffffff", selectcolor="#303030", indicatoron=True,
+                           bd=0, relief="flat", overrelief="flat", highlightthickness=0,
+                           padx=2, pady=0,
+                           command=self._seguro(lambda: self._redibujar(forzar=True))).grid(row=0, column=1, padx=(3, 7))
+            tk.Checkbutton(fila, variable=invertir, bg="#171717", activebackground="#171717",
+                           fg="#ffffff", selectcolor="#303030", indicatoron=True,
+                           bd=0, relief="flat", overrelief="flat", highlightthickness=0,
+                           padx=2, pady=0,
+                           command=self._seguro(lambda: self._redibujar(forzar=True))).grid(row=0, column=2, padx=(3, 7))
+        self._material_panel.configure(width=330, height=min(300, 48 + 25 * len(candidatos)))
 
     def _texturas_material_activas(self):
         activas = []
