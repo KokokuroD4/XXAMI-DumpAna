@@ -611,6 +611,7 @@ class PestanaTrace:
             self._cache_material[clave] = im.copy()
             return im
         except Exception as e:
+            self._ultimo_error_material = str(e)
             mensaje = "[Material] No se pudo cargar " + clave + ": " + str(e)
             self._log(mensaje)
             if hasattr(self, "lbl_estado"):
@@ -685,7 +686,10 @@ class PestanaTrace:
             modo_render = "material"
             textura = texturas[0] if texturas else None
             if textura is None:
-                self.lbl_estado.config(text="Material: no se pudo decodificar ninguna textura activa")
+                if not self._material_vars:
+                    self.lbl_estado.config(text="Material: el draw no resolvió rutas de texturas; revisa «Texturas enlazadas» abajo")
+                else:
+                    self.lbl_estado.config(text="Material: ninguna textura se pudo cargar. " + str(getattr(self, "_ultimo_error_material", "sin detalle"))[-130:])
         else:
             modo_render, textura = modo, None
         w, h = self._tam_imagen()
