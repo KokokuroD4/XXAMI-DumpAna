@@ -584,22 +584,38 @@ class PestanaTrace:
             # astc_raw_a_png vive como función de módulo en gui.py, no como método
             # de la instancia. Resolver el módulo ya cargado evita import circular.
             import sys
-            modulo_gui = sys.modules.get(self.app.__class__.__module__)
-            decodificador = getattr(modulo_gui, "astc_raw_a_png", None) if modulo_gui else None
+            decodificador = None
+            # El programa puede arrancar como gui, como __main__ o desde un launcher.
+            modulos = [sys.modules.get(self.app.__class__.__module__), sys.modules.get("gui"), sys.modules.get("__main__")]
+            for modulo in modulos:
+                if modulo is not None and callable(getattr(modulo, "astc_raw_a_png", None)):
+                    decodificador = getattr(modulo, "astc_raw_a_png")
+                    break
             if decodificador and Path(clave).suffix.lower() in (".ktx2", ".raw", ".astc"):
                 convertido = bool(decodificador(self.app, clave, str(tmp), rapido=False))
             elif hasattr(self.app, "decode_texture_to_png"):
                 convertido = bool(self.app.decode_texture_to_png(clave, str(tmp)))
-            # Comprobar el archivo, ya que algunos decodificadores no devuelven bool.
+            elif Path(clave).suffix.lower() == ".png":
+                im = Image.open(clave).convert("RGBA")
+                self._cache_material[clave] = im.copy()
+                return im
+            else:
+                raise RuntimeError("no se encontró el decodificador astc_raw_a_png en los módulos cargados")
+            # El decodificador devuelve True si ha generado imagen; verificar también
+            # el archivo y conservar el motivo exacto si no lo hizo.
             if tmp.exists() and tmp.stat().st_size > 0:
                 im = Image.open(str(tmp)).convert("RGBA")
             else:
-                # No intentar abrir KTX2/RAW directamente como si fueran PNG.
-                raise RuntimeError("el decodificador no generó PNG (resultado=" + repr(convertido) + ")")
+                motivo = getattr(self.app, "_diagnostico_textura", {}).get(clave, "")
+                raise RuntimeError("no se generó PNG; retorno=" + repr(convertido) + (("; diagnóstico: " + str(motivo)) if motivo else ""))
             self._cache_material[clave] = im.copy()
             return im
         except Exception as e:
-            self._log("[Material] No se pudo cargar " + clave + ": " + str(e))
+            mensaje = "[Material] No se pudo cargar " + clave + ": " + str(e)
+            self._log(mensaje)
+            if hasattr(self, "lbl_estado"):
+                try: self.lbl_estado.config(text=mensaje[-180:])
+                except Exception: pass
             return None
 
     def _actualizar_panel_material(self):
