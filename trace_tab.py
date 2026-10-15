@@ -552,7 +552,9 @@ class PestanaTrace:
         self._redibujar(forzar=True)
 
     def _construir_panel_material(self, parent):
-        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid")
+        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid", padx=4, pady=3)
+        self._material_panel.configure(width=300, height=190)
+        self._material_panel.pack_propagate(False)
         cab = tk.Frame(self._material_panel, bg="#171717")
         cab.pack(fill="x", padx=4, pady=(3, 1))
         tk.Label(cab, text="◉", bg="#171717", fg="#ffffff").pack(side="left", padx=(2, 8))
@@ -583,7 +585,9 @@ class PestanaTrace:
                 convertido = bool(self.app.astc_raw_a_png(clave, str(tmp), rapido=False))
             elif hasattr(self.app, "decode_texture_to_png"):
                 convertido = bool(self.app.decode_texture_to_png(clave, str(tmp)))
-            if convertido and tmp.exists():
+            # Los decodificadores de la app pueden devolver None aunque hayan escrito
+            # correctamente el PNG; el archivo generado es la señal fiable.
+            if tmp.exists() and tmp.stat().st_size > 0:
                 im = Image.open(str(tmp)).convert("RGBA")
             else:
                 im = Image.open(clave).convert("RGBA")
@@ -609,12 +613,15 @@ class PestanaTrace:
         actuales = set(self._material_vars)
         nuevas = {x[0] for x in candidatos}
         if actuales == nuevas:
+            # Reafirma el tamaño: los nombres largos no deben colapsar el panel.
+            self._material_panel.configure(width=300, height=min(300, 42 + 27 * max(1, len(candidatos))))
             return
         for w in self._material_lista.winfo_children():
             w.destroy()
         self._material_vars = {}
         if not candidatos:
             tk.Label(self._material_lista, text="No hay texturas volcadas", bg="#171717", fg="#bbbbbb").pack(anchor="w")
+            self._material_panel.configure(width=300, height=70)
             return
         for ruta, nombre in candidatos:
             fila = tk.Frame(self._material_lista, bg="#171717")
@@ -626,7 +633,8 @@ class PestanaTrace:
                            fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
             tk.Checkbutton(fila, variable=invertir, bg="#171717", activebackground="#171717",
                            fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
-            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w").pack(side="left")
+            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=29).pack(side="left")
+        self._material_panel.configure(width=330, height=min(300, 42 + 27 * len(candidatos)))
 
     def _texturas_material_activas(self):
         activas = []
@@ -655,6 +663,8 @@ class PestanaTrace:
             texturas = self._texturas_material_activas()
             modo_render = "material"
             textura = texturas[0] if texturas else None
+            if textura is None:
+                self.lbl_estado.config(text="Material: no se pudo decodificar ninguna textura activa")
         else:
             modo_render, textura = modo, None
         w, h = self._tam_imagen()
