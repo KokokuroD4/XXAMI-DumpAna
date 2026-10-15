@@ -578,7 +578,12 @@ class PestanaTrace:
         # Usar la ruta de conversión de la app si existe, sin cambiar de pestaña.
         tmp = Path(os.environ.get("TEMP", ".")) / ("xxami_material_" + str(abs(hash(clave))) + ".png")
         try:
-            if hasattr(self.app, "decode_texture_to_png") and self.app.decode_texture_to_png(clave, str(tmp)):
+            convertido = False
+            if hasattr(self.app, "astc_raw_a_png") and Path(clave).suffix.lower() in (".ktx2", ".raw", ".astc"):
+                convertido = bool(self.app.astc_raw_a_png(clave, str(tmp), rapido=False))
+            elif hasattr(self.app, "decode_texture_to_png"):
+                convertido = bool(self.app.decode_texture_to_png(clave, str(tmp)))
+            if convertido and tmp.exists():
                 im = Image.open(str(tmp)).convert("RGBA")
             else:
                 im = Image.open(clave).convert("RGBA")
