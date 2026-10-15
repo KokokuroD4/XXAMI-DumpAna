@@ -18,7 +18,7 @@ from PIL import ImageTk
 
 import xxami_trace as X
 
-MODOS = {"Alambre": "alambre", "Sólido": "solido", "Puntos": "puntos"}
+MODOS = {"Alambre": "alambre", "Sólido": "solido", "Puntos": "puntos", "Material": "material"}
 _RE_BUF = re.compile(r"^(?:vb|ib|vbib)_([0-9a-fA-F]+)_\d+\.buf$")
 
 
@@ -546,7 +546,49 @@ class PestanaTrace:
         if self.malla is None:
             return
         w, h = self._tam_imagen()
-        self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom, MODOS.get(self.cb_modo.get(), "alambre")))
+        modo = MODOS.get(self.cb_modo.get(), "alambre")
+        textura = self._textura_material() if modo == "material" else None
+        modo_render = "solido" if modo == "material" else modo
+        self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom,
+                                        modo_render, textura_material=textura))
+
+    def _textura_material(self):
+        """Busca una textura utilizable del draw por contenido/archivo, sin confiar en nombres de slots."""
+        if self.trace is None or self.draw is None or self.malla is None or self.malla.uv is None:
+            return None
+        try:
+            candidatos = self.trace.texturas_de(self.draw)
+            for _set, _binding, _el, h, info in candidatos:
+                if h is None:
+                    continue
+                nombre = (info or {}).get("file", "")
+                ruta = self.indice.buscar(nombre, self.trace.carpeta) if nombre else None
+                if ruta is None:
+                    ruta = self.indice.buscar_por_hash("tex", h, self.trace.carpeta)
+                if ruta is None:
+                    continue
+                cache = getattr(self, "_cache_material", {})
+                clave = str(ruta)
+                if clave in cache:
+                    return cache[clave]
+                tmp = Path(os.environ.get("TEMP", ".")) / ("xxami_material_" + str(abs(hash(clave))) + ".png")
+                if self.app and hasattr(self.app, "_cargar_textura_por_ruta"):
+                    ok = self.app._cargar_textura_por_ruta(str(ruta))
+                    if ok and Path(str(self.app.img_cache)).exists():
+                        from PIL import Image
+                        im = Image.open(str(self.app.img_cache)).convert("RGB")
+                        cache[clave] = im
+                        self._cache_material = cache
+                        return im
+                if hasattr(self.app, "decode_texture_to_png") and self.app.decode_texture_to_png(str(ruta), str(tmp)):
+                    from PIL import Image
+                    im = Image.open(str(tmp)).convert("RGB")
+                    cache[clave] = im
+                    self._cache_material = cache
+                    return im
+        except Exception as e:
+            self._log("[Material] " + str(e))
+        return None
 
     def _inicio_arrastre(self, e):
         self._arrastre = (e.x, e.y)
