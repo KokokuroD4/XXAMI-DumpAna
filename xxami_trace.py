@@ -737,8 +737,9 @@ def _aristas_unicas(caras, lineas):
     return np.unique(e, axis=0)
 
 
-def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0, modo="alambre", max_elementos=120000):
-    """Imagen RGB de la malla (proyección ortogonal). modo: 'alambre' | 'solido' | 'puntos'."""
+def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0, modo="alambre", max_elementos=120000, textura_material=None):
+    """Imagen RGB de la malla. Material aplica una textura al modo sólido cuando hay UV."""
+
     img = Image.new("RGB", (ancho, alto), (17, 17, 17))
     if malla.vacia:
         return img
@@ -779,7 +780,21 @@ def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0,
         for k in np.argsort(-prof):  # del más lejano al más cercano (algoritmo del pintor)
             t = caras[k]
             g = int(40 + 200 * float(luz[k]))
-            dib.polygon([(float(X[t[0]]), float(Y[t[0]])), (float(X[t[1]]), float(Y[t[1]])), (float(X[t[2]]), float(Y[t[2]]))], fill=(g // 2, g, g // 2))
+            pts = [(float(X[t[0]]), float(Y[t[0]])), (float(X[t[1]]), float(Y[t[1]])), (float(X[t[2]]), float(Y[t[2]]))]
+            if textura_material is not None and malla.uv is not None and len(malla.uv) == len(malla.pos):
+                # Render aproximado por triángulo: muestrea diffuse en el centro UV.
+                uv = np.nanmean(malla.uv[t], axis=0)
+                if np.isfinite(uv).all():
+                    tx = int(np.clip(uv[0] % 1.0, 0.0, 0.999999) * textura_material.width)
+                    ty = int(np.clip(uv[1] % 1.0, 0.0, 0.999999) * textura_material.height)
+                    rgb = textura_material.getpixel((tx, ty))
+                    shade = float(luz[k])
+                    color = tuple(int(np.clip(ch * shade, 0, 255)) for ch in rgb[:3])
+                else:
+                    color = (g // 2, g, g // 2)
+            else:
+                color = (g // 2, g, g // 2)
+            dib.polygon(pts, fill=color)
         return img
     e = _aristas_unicas(caras, malla.lineas)
     if len(e) > max_elementos:
