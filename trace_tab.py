@@ -38,6 +38,9 @@ class PestanaTrace:
         self._iid_draw = {}       # iid del árbol -> Draw
         self._ids_enlaces = 0
         self._cache_traces = {}   # ruta del json -> Trace ya leído
+        self._cache_material = {}
+        self._material_vars = {}
+        self._material_panel = None
         self._ctx_buf = None      # buffer abierto desde la lista Modelos y los draws que lo usan
         self._construir_lateral()
         self._construir_principal()
@@ -99,7 +102,7 @@ class PestanaTrace:
         self.cb_modo = ttk.Combobox(barra, state="readonly", width=9, values=list(MODOS))
         self.cb_modo.set("Alambre")
         self.cb_modo.pack(side="left", padx=(2, 8))
-        self.cb_modo.bind("<<ComboboxSelected>>", self._seguro(lambda e=None: self._redibujar(forzar=True)))
+        self.cb_modo.bind("<<ComboboxSelected>>", self._seguro(self._cambio_modo))
         self.lbl_estado = ttk.Label(barra, text="Elige una captura en la pestaña lateral «Frames»", font=("Arial", 9, "italic"))
         self.lbl_estado.pack(side="right", padx=10)
 
@@ -108,6 +111,7 @@ class PestanaTrace:
         marco_img = ttk.Frame(panel)
         self.lbl_img = tk.Label(marco_img, background="#111111", cursor="fleur")
         self.lbl_img.pack(expand=True, fill="both")
+        self._construir_panel_material(marco_img)
         panel.add(marco_img, weight=3)
         marco_txt = ttk.Frame(panel)
         sb = ttk.Scrollbar(marco_txt, orient="vertical")
@@ -293,6 +297,7 @@ class PestanaTrace:
     # ------------------------------------------------------------------ draw
     def _mostrar_draw(self, draw):
         self.draw = draw
+        self._actualizar_panel_material()
         pipe = self.trace.pipelines.get(draw.pipeline) or {}
         self._attrs = X.atributos_del_pipeline(pipe)
         etiquetas = [self._etq_attr(a) for a in self._attrs]
@@ -538,57 +543,118 @@ class PestanaTrace:
         self._img_tk = ImageTk.PhotoImage(imagen_pil)   # referencia guardada: si no, Tk la recoge y se ve en blanco
         self.lbl_img.config(image=self._img_tk)
 
+    def _cambio_modo(self, _e=None):
+        if self.cb_modo.get() == "Material":
+            self._actualizar_panel_material()
+            self._mostrar_panel_material(True)
+        else:
+            self._mostrar_panel_material(False)
+        self._redibujar(forzar=True)
+
+    def _construir_panel_material(self, parent):
+        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid")
+        cab = tk.Frame(self._material_panel, bg="#171717")
+        cab.pack(fill="x", padx=4, pady=(3, 1))
+        tk.Label(cab, text="◉", bg="#171717", fg="#ffffff").pack(side="left", padx=(2, 8))
+        tk.Label(cab, text="Materiales", bg="#171717", fg="#ffffff").pack(side="left")
+        self._material_lista = tk.Frame(self._material_panel, bg="#171717")
+        self._material_lista.pack(fill="both", expand=True, padx=4, pady=3)
+        self._material_panel.place(relx=1.0, x=-12, y=12, anchor="ne")
+        self._material_panel.place_forget()
+
+    def _mostrar_panel_material(self, visible):
+        if not self._material_panel:
+            return
+        if visible:
+            self._material_panel.place(relx=1.0, x=-12, y=12, anchor="ne")
+        else:
+            self._material_panel.place_forget()
+
+    def _textura_a_imagen(self, ruta):
+        from PIL import Image
+        clave = str(ruta)
+        if clave in self._cache_material:
+            return self._cache_material[clave].copy()
+        # Usar la ruta de conversión de la app si existe, sin cambiar de pestaña.
+        tmp = Path(os.environ.get("TEMP", ".")) / ("xxami_material_" + str(abs(hash(clave))) + ".png")
+        try:
+            if hasattr(self.app, "decode_texture_to_png") and self.app.decode_texture_to_png(clave, str(tmp)):
+                im = Image.open(str(tmp)).convert("RGBA")
+            else:
+                im = Image.open(clave).convert("RGBA")
+            self._cache_material[clave] = im.copy()
+            return im
+        except Exception as e:
+            self._log("[Material] No se pudo cargar " + clave + ": " + str(e))
+            return None
+
+    def _actualizar_panel_material(self):
+        if not self._material_panel or self.trace is None or self.draw is None:
+            return
+        candidatos = []
+        for nset, binding, _el, h, info in self.trace.texturas_de(self.draw):
+            if h is None:
+                continue
+            nombre = (info or {}).get("file", "")
+            ruta = self.indice.buscar(nombre, self.trace.carpeta) if nombre else None
+            if ruta is None:
+                ruta = self.indice.buscar_por_hash("tex", h, self.trace.carpeta)
+            if ruta is not None and all(str(ruta) != x[0] for x in candidatos):
+                candidatos.append((str(ruta), ruta.name))
+        actuales = set(self._material_vars)
+        nuevas = {x[0] for x in candidatos}
+        if actuales == nuevas:
+            return
+        for w in self._material_lista.winfo_children():
+            w.destroy()
+        self._material_vars = {}
+        if not candidatos:
+            tk.Label(self._material_lista, text="No hay texturas volcadas", bg="#171717", fg="#bbbbbb").pack(anchor="w")
+            return
+        for ruta, nombre in candidatos:
+            fila = tk.Frame(self._material_lista, bg="#171717")
+            fila.pack(fill="x", anchor="w")
+            activo = tk.BooleanVar(value=True)
+            invertir = tk.BooleanVar(value=False)
+            self._material_vars[ruta] = (activo, invertir)
+            tk.Checkbutton(fila, variable=activo, bg="#171717", activebackground="#171717",
+                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
+            tk.Checkbutton(fila, variable=invertir, bg="#171717", activebackground="#171717",
+                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
+            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w").pack(side="left")
+
+    def _texturas_material_activas(self):
+        activas = []
+        for ruta, (usar, invertir) in self._material_vars.items():
+            if not usar.get():
+                continue
+            im = self._textura_a_imagen(ruta)
+            if im is None:
+                continue
+            if invertir.get():
+                alpha = im.getchannel("A").point(lambda a: 255 - a)
+                im.putalpha(alpha)
+            activas.append(im)
+        return activas
+
     def _redibujar(self, forzar=False):
         ahora = time.time()
-        if not forzar and ahora - self._ultimo_dibujo < 0.04:   # limita la tasa mientras se arrastra
+        if not forzar and ahora - self._ultimo_dibujo < 0.04:
             return
         self._ultimo_dibujo = ahora
         if self.malla is None:
             return
-        w, h = self._tam_imagen()
         modo = MODOS.get(self.cb_modo.get(), "alambre")
-        textura = self._textura_material() if modo == "material" else None
-        modo_render = "solido" if modo == "material" else modo
+        if modo == "material":
+            self._actualizar_panel_material()
+            texturas = self._texturas_material_activas()
+            modo_render = "material"
+            textura = texturas[0] if texturas else None
+        else:
+            modo_render, textura = modo, None
+        w, h = self._tam_imagen()
         self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom,
                                         modo_render, textura_material=textura))
-
-    def _textura_material(self):
-        """Busca una textura utilizable del draw por contenido/archivo, sin confiar en nombres de slots."""
-        if self.trace is None or self.draw is None or self.malla is None or self.malla.uv is None:
-            return None
-        try:
-            candidatos = self.trace.texturas_de(self.draw)
-            for _set, _binding, _el, h, info in candidatos:
-                if h is None:
-                    continue
-                nombre = (info or {}).get("file", "")
-                ruta = self.indice.buscar(nombre, self.trace.carpeta) if nombre else None
-                if ruta is None:
-                    ruta = self.indice.buscar_por_hash("tex", h, self.trace.carpeta)
-                if ruta is None:
-                    continue
-                cache = getattr(self, "_cache_material", {})
-                clave = str(ruta)
-                if clave in cache:
-                    return cache[clave]
-                tmp = Path(os.environ.get("TEMP", ".")) / ("xxami_material_" + str(abs(hash(clave))) + ".png")
-                if self.app and hasattr(self.app, "_cargar_textura_por_ruta"):
-                    ok = self.app._cargar_textura_por_ruta(str(ruta))
-                    if ok and Path(str(self.app.img_cache)).exists():
-                        from PIL import Image
-                        im = Image.open(str(self.app.img_cache)).convert("RGB")
-                        cache[clave] = im
-                        self._cache_material = cache
-                        return im
-                if hasattr(self.app, "decode_texture_to_png") and self.app.decode_texture_to_png(str(ruta), str(tmp)):
-                    from PIL import Image
-                    im = Image.open(str(tmp)).convert("RGB")
-                    cache[clave] = im
-                    self._cache_material = cache
-                    return im
-        except Exception as e:
-            self._log("[Material] " + str(e))
-        return None
 
     def _inicio_arrastre(self, e):
         self._arrastre = (e.x, e.y)
