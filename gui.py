@@ -1159,7 +1159,21 @@ class AppMultiherramienta:
         ruta = carpeta / self.lista_archivos_modelo.get(sel[0])
         if not ruta.is_file():
             return
-        if hasattr(self, "tabs") and hasattr(self, "tab_model_preview"):
+        ext = ruta.suffix.lower()
+        # Los buffers PartNN ya tienen un analizador/visor real en Frame Trace.
+        # Reutilizarlo evita mostrar solo bytes hexadecimales en la vista empaquetada.
+        if ext == ".buf" and getattr(self, "pestana_trace", None):
+            self.abrir_archivo_por_ruta(str(ruta))
+            return
+        # Para texturas, abrir el visor común de Texturas con la ruta exacta del
+        # archivo empaquetado; el helper conserva formato, diagnóstico y metadatos.
+        if ext in (".ktx2", ".raw"):
+            self.tabs.select(self.tab_a)
+            if self._cargar_textura_por_ruta(str(ruta)):
+                return
+            if hasattr(self, "tabs") and hasattr(self, "tab_model_preview"):
+                self.tabs.select(self.tab_model_preview)
+        elif hasattr(self, "tabs") and hasattr(self, "tab_model_preview"):
             self.tabs.select(self.tab_model_preview)
         self.txt_previa_modelo.pack_forget()
         self.lbl_previa_modelo.pack(expand=True, fill="both")
@@ -1457,62 +1471,74 @@ class AppMultiherramienta:
             except Exception as e:
                 messagebox.showerror("Abrir archivo", f"No se pudo abrir {Path(ruta).name}: {e}")
 
+    def _cargar_textura_por_ruta(self, ruta):
+        """Carga una textura por ruta absoluta usando el mismo visor que el explorador."""
+        ruta = str(ruta)
+        ruta_lectura = self.texturas_reemplazadas.get(ruta, ruta)
+        if not astc_raw_a_png(self, ruta_lectura, str(self.img_cache)):
+            return False
+        self._presentar_textura_cargada(ruta, ruta_lectura)
+        return True
+
     def cargar_textura_desde_explorador(self, lbl):
         ruta = self.archivos_mapeados.get(lbl)
         if not ruta: return
         self.tabs.select(self.tab_a)
         ruta_lectura = self.texturas_reemplazadas.get(ruta, ruta)
         if astc_raw_a_png(self, ruta_lectura, str(self.img_cache)):
-            self.ruta_raw_actual = ruta
-            with Image.open(str(self.img_cache)) as img_abierta:
-                img = img_abierta.copy()  # copia desvinculada del archivo: se puede cerrar ya el handle
-            orig_w, orig_h = img.size
-            try: datos_fieles = leer_datos_textura(ruta_lectura)
-            except Exception: datos_fieles = b""
-            info_formato = obtener_info_formato(ruta_lectura)
-            codigo_formato = obtener_codigo_formato(ruta_lectura)
-            motivo_diagnostico = self._diagnostico_textura.get(ruta_lectura)
-            color_estado = "#00ff66"
-            if codigo_formato in FORMATOS_NO_VISUALIZABLES or (motivo_diagnostico and motivo_diagnostico.startswith("archivo vacío")):
-                # El PNG cargado es el aviso "notload", no la textura real: las dimensiones
-                # que se muestran son las declaradas en el nombre de archivo, no las del aviso.
-                orig_w, orig_h = parsear_dimensiones(ruta_lectura)
-                nombre_fmt = info_formato["nombre"] if info_formato else f"fmt{codigo_formato}"
-                detalle = motivo_diagnostico or "no es una imagen; datos sin forma reconocible"
-                fmt_real = f"{nombre_fmt} — ⚠ NO SE HA PODIDO LEER CORRECTAMENTE LA TEXTURA ({detalle})"
-                color_estado = "#ff3333"
-                motivo_diagnostico = None  # ya quedó explicado arriba; no lo dupliques abajo
-            elif info_formato is not None and info_formato["tipo"] == "astc":
-                bloque_real = info_formato["bloque"]
-                fmt_real = f"ASTC {bloque_real} (VK_FORMAT_{info_formato['nombre']})"
-                self.cb.set(bloque_real)
-            elif info_formato is not None and info_formato["tipo"] == "etc2":
-                fmt_real = f"ETC2 4x4 (VK_FORMAT_{info_formato['nombre']})"
-                self.cb.set("4x4")
-            elif info_formato is not None:
-                fmt_real = f"{info_formato['nombre']} (sin comprimir)"
-                if len(info_formato["canales"]) == 1 and img.mode == "RGBA" and img.getchannel("A").getextrema()[0] < 255:
-                    fmt_real += " → interpretada como máscara alfa"
-            else:
-                # fmt no catalogado: astc_raw_a_png ya probó ASTC/ETC2/BC y dejó el resultado
-                # en motivo_diagnostico; no asumimos "ASTC" a ciegas como antes.
-                fmt_real = f"fmt{codigo_formato} no catalogado" if codigo_formato is not None else "formato no identificable"
-                bloque_estimado = detectar_bloque_astc(orig_w, orig_h, len(datos_fieles))
-                self.cb.set(bloque_estimado)
-            if motivo_diagnostico is not None and color_estado != "#ff3333":
-                fmt_real += f"\n• ⚠ {motivo_diagnostico}"
-                color_estado = "#ffaa00"
-            if ruta in self.texturas_reemplazadas: fmt_real += " [ MODIFICADA ]"
-            disp_img = img.copy()
-            disp_img.thumbnail((500, 500))
-            tk_i = ImageTk.PhotoImage(componer_sobre_tablero(disp_img))
-            self.p_img.config(image=tk_i, text="")
-            self.p_img.image = tk_i
-            extra_ktx = ""
-            if ktx2_util and ktx2_util.es_ktx2(ruta_lectura):
-                _ki = ktx2_util.info_textura(ruta_lectura)
-                if _ki: extra_ktx = f"\n• Contenedor: KTX2 ({_ki.resumen()}); se muestra el nivel 0"
-            self.p_txt.config(foreground=color_estado, text=f"[ INFORMACIÓN DE TEXTURA ]\n• Dimensiones: {orig_w}x{orig_h} px\n• Formato GPU: {fmt_real}\n• Codificación: UNORM\n• Peso: {os.path.getsize(ruta_lectura)/1024:.2f} KB{extra_ktx}\n• Ruta: {Path(ruta).name}")
+            self._presentar_textura_cargada(ruta, ruta_lectura)
+
+    def _presentar_textura_cargada(self, ruta, ruta_lectura):
+        self.ruta_raw_actual = ruta
+        with Image.open(str(self.img_cache)) as img_abierta:
+            img = img_abierta.copy()  # copia desvinculada del archivo: se puede cerrar ya el handle
+        orig_w, orig_h = img.size
+        try: datos_fieles = leer_datos_textura(ruta_lectura)
+        except Exception: datos_fieles = b""
+        info_formato = obtener_info_formato(ruta_lectura)
+        codigo_formato = obtener_codigo_formato(ruta_lectura)
+        motivo_diagnostico = self._diagnostico_textura.get(ruta_lectura)
+        color_estado = "#00ff66"
+        if codigo_formato in FORMATOS_NO_VISUALIZABLES or (motivo_diagnostico and motivo_diagnostico.startswith("archivo vacío")):
+            # El PNG cargado es el aviso "notload", no la textura real: las dimensiones
+            # que se muestran son las declaradas en el nombre de archivo, no las del aviso.
+            orig_w, orig_h = parsear_dimensiones(ruta_lectura)
+            nombre_fmt = info_formato["nombre"] if info_formato else f"fmt{codigo_formato}"
+            detalle = motivo_diagnostico or "no es una imagen; datos sin forma reconocible"
+            fmt_real = f"{nombre_fmt} — ⚠ NO SE HA PODIDO LEER CORRECTAMENTE LA TEXTURA ({detalle})"
+            color_estado = "#ff3333"
+            motivo_diagnostico = None  # ya quedó explicado arriba; no lo dupliques abajo
+        elif info_formato is not None and info_formato["tipo"] == "astc":
+            bloque_real = info_formato["bloque"]
+            fmt_real = f"ASTC {bloque_real} (VK_FORMAT_{info_formato['nombre']})"
+            self.cb.set(bloque_real)
+        elif info_formato is not None and info_formato["tipo"] == "etc2":
+            fmt_real = f"ETC2 4x4 (VK_FORMAT_{info_formato['nombre']})"
+            self.cb.set("4x4")
+        elif info_formato is not None:
+            fmt_real = f"{info_formato['nombre']} (sin comprimir)"
+            if len(info_formato["canales"]) == 1 and img.mode == "RGBA" and img.getchannel("A").getextrema()[0] < 255:
+                fmt_real += " → interpretada como máscara alfa"
+        else:
+            # fmt no catalogado: astc_raw_a_png ya probó ASTC/ETC2/BC y dejó el resultado
+            # en motivo_diagnostico; no asumimos "ASTC" a ciegas como antes.
+            fmt_real = f"fmt{codigo_formato} no catalogado" if codigo_formato is not None else "formato no identificable"
+            bloque_estimado = detectar_bloque_astc(orig_w, orig_h, len(datos_fieles))
+            self.cb.set(bloque_estimado)
+        if motivo_diagnostico is not None and color_estado != "#ff3333":
+            fmt_real += f"\n• ⚠ {motivo_diagnostico}"
+            color_estado = "#ffaa00"
+        if ruta in self.texturas_reemplazadas: fmt_real += " [ MODIFICADA ]"
+        disp_img = img.copy()
+        disp_img.thumbnail((500, 500))
+        tk_i = ImageTk.PhotoImage(componer_sobre_tablero(disp_img))
+        self.p_img.config(image=tk_i, text="")
+        self.p_img.image = tk_i
+        extra_ktx = ""
+        if ktx2_util and ktx2_util.es_ktx2(ruta_lectura):
+            _ki = ktx2_util.info_textura(ruta_lectura)
+            if _ki: extra_ktx = f"\n• Contenedor: KTX2 ({_ki.resumen()}); se muestra el nivel 0"
+        self.p_txt.config(foreground=color_estado, text=f"[ INFORMACIÓN DE TEXTURA ]\n• Dimensiones: {orig_w}x{orig_h} px\n• Formato GPU: {fmt_real}\n• Codificación: UNORM\n• Peso: {os.path.getsize(ruta_lectura)/1024:.2f} KB{extra_ktx}\n• Ruta: {Path(ruta).name}")
 
     def reemplazar_textura_por_png(self):
         if not self.ruta_raw_actual: return
