@@ -553,8 +553,18 @@ class PestanaTrace:
         self._redibujar(forzar=True)
 
     def _construir_panel_material(self, parent):
-        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid", padx=4, pady=3)
-        self._material_panel.configure(width=300, height=190)
+        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid", padx=5, pady=4)
+        self._material_panel.configure(width=330, height=190)
+        self._iconos_material = {}
+        base = Path(__file__).resolve().parent
+        for clave, archivo in (("visibilidad", "visibility.png"), ("alpha", "invert_alpha.png")):
+            try:
+                icono = Image.open(base / archivo).convert("RGBA")
+                icono.thumbnail((22, 22), Image.Resampling.LANCZOS)
+                self._iconos_material[clave] = ImageTk.PhotoImage(icono)
+            except Exception as exc:
+                self._iconos_material[clave] = None
+                self._log(f"[Material] No se pudo cargar icono {archivo}: {exc}")
         self._material_panel.pack_propagate(False)
         cab = tk.Frame(self._material_panel, bg="#171717")
         cab.pack(fill="x", padx=4, pady=(3, 1))
