@@ -620,18 +620,27 @@ class PestanaTrace:
             return None
 
     def _actualizar_panel_material(self):
-        if not self._material_panel or self.trace is None or self.draw is None:
+        if not self._material_panel:
             return
         candidatos = []
-        for nset, binding, _el, h, info in self.trace.texturas_de(self.draw):
-            if h is None:
-                continue
-            nombre = (info or {}).get("file", "")
-            ruta = self.indice.buscar(nombre, self.trace.carpeta) if nombre else None
-            if ruta is None:
-                ruta = self.indice.buscar_por_hash("tex", h, self.trace.carpeta)
-            if ruta is not None and all(str(ruta) != x[0] for x in candidatos):
-                candidatos.append((str(ruta), ruta.name))
+        # Hay dos flujos distintos: un draw de Frame Trace tiene descriptores
+        # Vulkan; un PartNN del modelo empaquetado no tiene draw/trace y sus
+        # texturas se descubren desde el índice de archivos de la propia parte.
+        if self.draw is not None and self.trace is not None:
+            for nset, binding, _el, h, info in self.trace.texturas_de(self.draw):
+                if h is None:
+                    continue
+                nombre = (info or {}).get("file", "")
+                ruta = self.indice.buscar(nombre, self.trace.carpeta) if nombre else None
+                if ruta is None:
+                    ruta = self.indice.buscar_por_hash("tex", h, self.trace.carpeta)
+                if ruta is not None and all(str(ruta) != x[0] for x in candidatos):
+                    candidatos.append((str(ruta), ruta.name))
+        elif self.malla is not None:
+            for ruta in (self.malla.info or {}).get("texturas", []):
+                ruta = Path(ruta)
+                if ruta.is_file() and all(str(ruta) != x[0] for x in candidatos):
+                    candidatos.append((str(ruta), ruta.name))
         actuales = set(self._material_vars)
         nuevas = {x[0] for x in candidatos}
         if actuales == nuevas:
