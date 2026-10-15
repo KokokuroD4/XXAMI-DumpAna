@@ -654,17 +654,32 @@ class PestanaTrace:
             tk.Label(self._material_lista, text="No hay texturas volcadas", bg="#171717", fg="#bbbbbb").pack(anchor="w")
             self._material_panel.configure(width=300, height=70)
             return
+        # Iconos de 64x64 reducidos para que expliquen los dos checks sin ocupar espacio.
+        if not hasattr(self, "_iconos_material"):
+            self._iconos_material = {}
+            base = Path(__file__).resolve().parent
+            for clave, archivo in (("visibilidad", "visibility.png"), ("alpha", "invert_alpha.png")):
+                try:
+                    icono = Image.open(base / archivo).convert("RGBA")
+                    icono.thumbnail((16, 16), Image.Resampling.LANCZOS)
+                    self._iconos_material[clave] = ImageTk.PhotoImage(icono)
+                except Exception:
+                    self._iconos_material[clave] = None
         for ruta, nombre in candidatos:
             fila = tk.Frame(self._material_lista, bg="#171717")
             fila.pack(fill="x", anchor="w")
             activo = tk.BooleanVar(value=True)
             invertir = tk.BooleanVar(value=False)
             self._material_vars[ruta] = (activo, invertir)
-            tk.Checkbutton(fila, variable=activo, bg="#171717", activebackground="#171717",
-                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
-            tk.Checkbutton(fila, variable=invertir, bg="#171717", activebackground="#171717",
-                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
-            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=29).pack(side="left")
+            tk.Checkbutton(fila, variable=activo, image=self._iconos_material.get("visibilidad"),
+                           compound="left", bg="#171717", activebackground="#171717",
+                           selectcolor="#303030", padx=2,
+                           command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
+            tk.Checkbutton(fila, variable=invertir, image=self._iconos_material.get("alpha"),
+                           compound="left", bg="#171717", activebackground="#171717",
+                           selectcolor="#303030", padx=2,
+                           command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
+            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=25).pack(side="left")
         self._material_panel.configure(width=330, height=min(300, 42 + 27 * len(candidatos)))
 
     def _texturas_material_activas(self):
@@ -702,8 +717,11 @@ class PestanaTrace:
         else:
             modo_render, textura = modo, None
         w, h = self._tam_imagen()
+        # La rasterización UV es costosa por triángulo. Limitar la cantidad
+        # durante la vista interactiva mantiene la rotación fluida en modelos grandes.
+        limite = 12000 if modo_render == "material" else 120000
         self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom,
-                                        modo_render, textura_material=textura))
+                                        modo_render, max_elementos=limite, textura_material=textura))
 
     def _inicio_arrastre(self, e):
         self._arrastre = (e.x, e.y)
