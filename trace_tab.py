@@ -581,16 +581,21 @@ class PestanaTrace:
         tmp = Path(os.environ.get("TEMP", ".")) / ("xxami_material_" + str(abs(hash(clave))) + ".png")
         try:
             convertido = False
-            if hasattr(self.app, "astc_raw_a_png") and Path(clave).suffix.lower() in (".ktx2", ".raw", ".astc"):
-                convertido = bool(self.app.astc_raw_a_png(clave, str(tmp), rapido=False))
+            # astc_raw_a_png vive como función de módulo en gui.py, no como método
+            # de la instancia. Resolver el módulo ya cargado evita import circular.
+            import sys
+            modulo_gui = sys.modules.get(self.app.__class__.__module__)
+            decodificador = getattr(modulo_gui, "astc_raw_a_png", None) if modulo_gui else None
+            if decodificador and Path(clave).suffix.lower() in (".ktx2", ".raw", ".astc"):
+                convertido = bool(decodificador(self.app, clave, str(tmp), rapido=False))
             elif hasattr(self.app, "decode_texture_to_png"):
                 convertido = bool(self.app.decode_texture_to_png(clave, str(tmp)))
-            # Los decodificadores de la app pueden devolver None aunque hayan escrito
-            # correctamente el PNG; el archivo generado es la señal fiable.
+            # Comprobar el archivo, ya que algunos decodificadores no devuelven bool.
             if tmp.exists() and tmp.stat().st_size > 0:
                 im = Image.open(str(tmp)).convert("RGBA")
             else:
-                im = Image.open(clave).convert("RGBA")
+                # No intentar abrir KTX2/RAW directamente como si fueran PNG.
+                raise RuntimeError("el decodificador no generó PNG (resultado=" + repr(convertido) + ")")
             self._cache_material[clave] = im.copy()
             return im
         except Exception as e:
