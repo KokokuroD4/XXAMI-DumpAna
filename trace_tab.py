@@ -18,7 +18,7 @@ from PIL import ImageTk
 
 import xxami_trace as X
 
-MODOS = {"Alambre": "alambre", "Sólido": "solido", "Puntos": "puntos"}
+MODOS = {"Alambre": "alambre", "Sólido": "solido", "Puntos": "puntos", "Material": "material"}
 _RE_BUF = re.compile(r"^(?:vb|ib|vbib)_([0-9a-fA-F]+)_\d+\.buf$")
 
 
@@ -38,6 +38,9 @@ class PestanaTrace:
         self._iid_draw = {}       # iid del árbol -> Draw
         self._ids_enlaces = 0
         self._cache_traces = {}   # ruta del json -> Trace ya leído
+        self._cache_material = {}
+        self._material_vars = {}
+        self._material_panel = None
         self._ctx_buf = None      # buffer abierto desde la lista Modelos y los draws que lo usan
         self._construir_lateral()
         self._construir_principal()
@@ -99,8 +102,7 @@ class PestanaTrace:
         self.cb_modo = ttk.Combobox(barra, state="readonly", width=9, values=list(MODOS))
         self.cb_modo.set("Alambre")
         self.cb_modo.pack(side="left", padx=(2, 8))
-        self.cb_modo.bind("<<ComboboxSelected>>", self._seguro(lambda e=None: self._redibujar(forzar=True)))
-        ttk.Button(barra, text="Exportar OBJ", command=self._seguro(self.exportar_obj)).pack(side="left", padx=4)
+        self.cb_modo.bind("<<ComboboxSelected>>", self._seguro(self._cambio_modo))
         self.lbl_estado = ttk.Label(barra, text="Elige una captura en la pestaña lateral «Frames»", font=("Arial", 9, "italic"))
         self.lbl_estado.pack(side="right", padx=10)
 
@@ -109,6 +111,7 @@ class PestanaTrace:
         marco_img = ttk.Frame(panel)
         self.lbl_img = tk.Label(marco_img, background="#111111", cursor="fleur")
         self.lbl_img.pack(expand=True, fill="both")
+        self._construir_panel_material(marco_img)
         panel.add(marco_img, weight=3)
         marco_txt = ttk.Frame(panel)
         sb = ttk.Scrollbar(marco_txt, orient="vertical")
@@ -294,6 +297,7 @@ class PestanaTrace:
     # ------------------------------------------------------------------ draw
     def _mostrar_draw(self, draw):
         self.draw = draw
+        self._actualizar_panel_material()
         pipe = self.trace.pipelines.get(draw.pipeline) or {}
         self._attrs = X.atributos_del_pipeline(pipe)
         etiquetas = [self._etq_attr(a) for a in self._attrs]
@@ -539,15 +543,167 @@ class PestanaTrace:
         self._img_tk = ImageTk.PhotoImage(imagen_pil)   # referencia guardada: si no, Tk la recoge y se ve en blanco
         self.lbl_img.config(image=self._img_tk)
 
+    def _cambio_modo(self, _e=None):
+        if self.cb_modo.get() == "Material":
+            self._actualizar_panel_material()
+            self._mostrar_panel_material(True)
+        else:
+            self._mostrar_panel_material(False)
+        self._redibujar(forzar=True)
+
+    def _construir_panel_material(self, parent):
+        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid", padx=4, pady=3)
+        self._material_panel.configure(width=300, height=190)
+        self._material_panel.pack_propagate(False)
+        cab = tk.Frame(self._material_panel, bg="#171717")
+        cab.pack(fill="x", padx=4, pady=(3, 1))
+        tk.Label(cab, text="◉", bg="#171717", fg="#ffffff").pack(side="left", padx=(2, 8))
+        tk.Label(cab, text="Materiales", bg="#171717", fg="#ffffff").pack(side="left")
+        self._material_lista = tk.Frame(self._material_panel, bg="#171717")
+        self._material_lista.pack(fill="both", expand=True, padx=4, pady=3)
+        self._material_panel.place(relx=1.0, x=-12, y=12, anchor="ne")
+        self._material_panel.place_forget()
+
+    def _mostrar_panel_material(self, visible):
+        if not self._material_panel:
+            return
+        if visible:
+            self._material_panel.place(relx=1.0, x=-12, y=12, anchor="ne")
+        else:
+            self._material_panel.place_forget()
+
+    def _textura_a_imagen(self, ruta):
+        from PIL import Image
+        clave = str(ruta)
+        if clave in self._cache_material:
+            return self._cache_material[clave].copy()
+        # Usar la ruta de conversión de la app si existe, sin cambiar de pestaña.
+        tmp = Path(os.environ.get("TEMP", ".")) / ("xxami_material_" + str(abs(hash(clave))) + ".png")
+        try:
+            convertido = False
+            # astc_raw_a_png vive como función de módulo en gui.py, no como método
+            # de la instancia. Resolver el módulo ya cargado evita import circular.
+            import sys
+            decodificador = None
+            # El programa puede arrancar como gui, como __main__ o desde un launcher.
+            modulos = [sys.modules.get(self.app.__class__.__module__), sys.modules.get("gui"), sys.modules.get("__main__")]
+            for modulo in modulos:
+                if modulo is not None and callable(getattr(modulo, "astc_raw_a_png", None)):
+                    decodificador = getattr(modulo, "astc_raw_a_png")
+                    break
+            if decodificador and Path(clave).suffix.lower() in (".ktx2", ".raw", ".astc"):
+                convertido = bool(decodificador(self.app, clave, str(tmp), rapido=False))
+            elif hasattr(self.app, "decode_texture_to_png"):
+                convertido = bool(self.app.decode_texture_to_png(clave, str(tmp)))
+            elif Path(clave).suffix.lower() == ".png":
+                im = Image.open(clave).convert("RGBA")
+                self._cache_material[clave] = im.copy()
+                return im
+            else:
+                raise RuntimeError("no se encontró el decodificador astc_raw_a_png en los módulos cargados")
+            # El decodificador devuelve True si ha generado imagen; verificar también
+            # el archivo y conservar el motivo exacto si no lo hizo.
+            if tmp.exists() and tmp.stat().st_size > 0:
+                im = Image.open(str(tmp)).convert("RGBA")
+            else:
+                motivo = getattr(self.app, "_diagnostico_textura", {}).get(clave, "")
+                raise RuntimeError("no se generó PNG; retorno=" + repr(convertido) + (("; diagnóstico: " + str(motivo)) if motivo else ""))
+            self._cache_material[clave] = im.copy()
+            return im
+        except Exception as e:
+            self._ultimo_error_material = str(e)
+            mensaje = "[Material] No se pudo cargar " + clave + ": " + str(e)
+            self._log(mensaje)
+            if hasattr(self, "lbl_estado"):
+                try: self.lbl_estado.config(text=mensaje[-180:])
+                except Exception: pass
+            return None
+
+    def _actualizar_panel_material(self):
+        if not self._material_panel:
+            return
+        candidatos = []
+        # Hay dos flujos distintos: un draw de Frame Trace tiene descriptores
+        # Vulkan; un PartNN del modelo empaquetado no tiene draw/trace y sus
+        # texturas se descubren desde el índice de archivos de la propia parte.
+        if self.draw is not None and self.trace is not None:
+            for nset, binding, _el, h, info in self.trace.texturas_de(self.draw):
+                if h is None:
+                    continue
+                nombre = (info or {}).get("file", "")
+                ruta = self.indice.buscar(nombre, self.trace.carpeta) if nombre else None
+                if ruta is None:
+                    ruta = self.indice.buscar_por_hash("tex", h, self.trace.carpeta)
+                if ruta is not None and all(str(ruta) != x[0] for x in candidatos):
+                    candidatos.append((str(ruta), ruta.name))
+        elif self.malla is not None:
+            for ruta in (self.malla.info or {}).get("texturas", []):
+                ruta = Path(ruta)
+                if ruta.is_file() and all(str(ruta) != x[0] for x in candidatos):
+                    candidatos.append((str(ruta), ruta.name))
+        actuales = set(self._material_vars)
+        nuevas = {x[0] for x in candidatos}
+        if actuales == nuevas:
+            # Reafirma el tamaño: los nombres largos no deben colapsar el panel.
+            self._material_panel.configure(width=300, height=min(300, 42 + 27 * max(1, len(candidatos))))
+            return
+        for w in self._material_lista.winfo_children():
+            w.destroy()
+        self._material_vars = {}
+        if not candidatos:
+            tk.Label(self._material_lista, text="No hay texturas volcadas", bg="#171717", fg="#bbbbbb").pack(anchor="w")
+            self._material_panel.configure(width=300, height=70)
+            return
+        for ruta, nombre in candidatos:
+            fila = tk.Frame(self._material_lista, bg="#171717")
+            fila.pack(fill="x", anchor="w")
+            activo = tk.BooleanVar(value=True)
+            invertir = tk.BooleanVar(value=False)
+            self._material_vars[ruta] = (activo, invertir)
+            tk.Checkbutton(fila, variable=activo, bg="#171717", activebackground="#171717",
+                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
+            tk.Checkbutton(fila, variable=invertir, bg="#171717", activebackground="#171717",
+                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
+            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=29).pack(side="left")
+        self._material_panel.configure(width=330, height=min(300, 42 + 27 * len(candidatos)))
+
+    def _texturas_material_activas(self):
+        activas = []
+        for ruta, (usar, invertir) in self._material_vars.items():
+            if not usar.get():
+                continue
+            im = self._textura_a_imagen(ruta)
+            if im is None:
+                continue
+            if invertir.get():
+                alpha = im.getchannel("A").point(lambda a: 255 - a)
+                im.putalpha(alpha)
+            activas.append(im)
+        return activas
+
     def _redibujar(self, forzar=False):
         ahora = time.time()
-        if not forzar and ahora - self._ultimo_dibujo < 0.04:   # limita la tasa mientras se arrastra
+        if not forzar and ahora - self._ultimo_dibujo < 0.04:
             return
         self._ultimo_dibujo = ahora
         if self.malla is None:
             return
+        modo = MODOS.get(self.cb_modo.get(), "alambre")
+        if modo == "material":
+            self._actualizar_panel_material()
+            texturas = self._texturas_material_activas()
+            modo_render = "material"
+            textura = texturas[0] if texturas else None
+            if textura is None:
+                if not self._material_vars:
+                    self.lbl_estado.config(text="Material: el draw no resolvió rutas de texturas; revisa «Texturas enlazadas» abajo")
+                else:
+                    self.lbl_estado.config(text="Material: ninguna textura se pudo cargar. " + str(getattr(self, "_ultimo_error_material", "sin detalle"))[-130:])
+        else:
+            modo_render, textura = modo, None
         w, h = self._tam_imagen()
-        self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom, MODOS.get(self.cb_modo.get(), "alambre")))
+        self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom,
+                                        modo_render, textura_material=textura))
 
     def _inicio_arrastre(self, e):
         self._arrastre = (e.x, e.y)
@@ -565,13 +721,3 @@ class PestanaTrace:
         self.zoom = max(0.1, min(20.0, self.zoom * (1.1 if e.delta > 0 else 1 / 1.1)))
         self._redibujar()
 
-    # ------------------------------------------------------------------ exportar
-    def exportar_obj(self):
-        if self.malla is None or self.malla.vacia or not len(self.malla.caras):
-            messagebox.showinfo("Exportar OBJ", "No hay una malla de triángulos para exportar.")
-            return
-        nombre = f"draw_{self.draw.idx}.obj"
-        ruta = filedialog.asksaveasfilename(initialfile=nombre, defaultextension=".obj", filetypes=[("OBJ", "*.obj")])
-        if ruta:
-            n = X.exportar_obj(self.malla, ruta, nombre=Path(ruta).stem)
-            messagebox.showinfo("Exportar OBJ", f"{n} triángulos guardados.")

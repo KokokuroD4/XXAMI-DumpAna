@@ -1,0 +1,61 @@
+
+===== Sesión iniciada 2026-10-14 15:16:02 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 15:19:11 =====
+
+===== Sesión iniciada 2026-10-14 15:20:53 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 15:22:01 =====
+
+===== Sesión iniciada 2026-10-14 17:52:03 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 17:54:25 =====
+
+===== Sesión iniciada 2026-10-14 19:09:05 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+
+===== Sesión iniciada 2026-10-14 19:27:07 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 19:30:03 =====
+
+===== Sesión iniciada 2026-10-14 19:30:06 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 22:30:26 =====
+
+===== Sesión iniciada 2026-10-14 22:30:38 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 22:41:18 =====
+
+===== Sesión iniciada 2026-10-14 22:41:23 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 22:44:34 =====
+
+===== Sesión iniciada 2026-10-14 22:44:37 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-14 22:48:14 =====
+
+===== Sesión iniciada 2026-10-15 09:27:09 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+[09:42:37] AVISO (ResourceWarning) en C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\gui.py:1548: unclosed file <_io.BufferedReader name='C:\\Users\\M4800~1.DES\\AppData\\Local\\Temp\\temp_preview_cache.png'>
+[09:42:51] AVISO (ResourceWarning) en C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\gui.py:1548: unclosed file <_io.BufferedReader name='C:\\Users\\M4800~1.DES\\AppData\\Local\\Temp\\temp_preview_cache.png'>
+[09:43:01] AVISO (ResourceWarning) en C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\gui.py:1548: unclosed file <_io.BufferedReader name='C:\\Users\\M4800~1.DES\\AppData\\Local\\Temp\\temp_preview_cache.png'>
+[09:43:11] AVISO (ResourceWarning) en C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\gui.py:1548: unclosed file <_io.BufferedReader name='C:\\Users\\M4800~1.DES\\AppData\\Local\\Temp\\temp_preview_cache.png'>
+===== Sesión finalizada normalmente 2026-10-15 09:43:45 =====
+
+===== Sesión iniciada 2026-10-15 10:04:47 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-15 10:31:10 =====
+
+===== Sesión iniciada 2026-10-15 10:31:12 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+
+===== Sesión iniciada 2026-10-15 10:56:13 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-15 11:03:02 =====
+
+===== Sesión iniciada 2026-10-15 11:04:19 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+
+===== Sesión iniciada 2026-10-15 11:28:15 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-15 11:28:17 =====
+===== Sesión finalizada normalmente 2026-10-15 11:31:21 =====
+
+===== Sesión iniciada 2026-10-15 11:35:02 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-15 11:39:20 =====
+
+===== Sesión iniciada 2026-10-15 11:39:24 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-15 11:42:26 =====
+
+===== Sesión iniciada 2026-10-15 11:42:42 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-15 11:45:37 =====
+
+===== Sesión iniciada 2026-10-15 11:48:57 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====
+===== Sesión finalizada normalmente 2026-10-15 11:52:28 =====
+
+===== Sesión iniciada 2026-10-15 11:53:44 | log en: C:\Users\m4800.DESKTOP-6U9IRHC\Documents\GitHub\XXAMI-DumpAna\xxami_crash_log.txt =====

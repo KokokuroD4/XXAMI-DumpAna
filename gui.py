@@ -706,7 +706,11 @@ def astc_raw_a_png(self, ruta_raw, ruta_png_temp, rapido=False):
         _registrar_diagnostico(self, ruta_raw, motivo_diagnostico)
         img_decodificada.save(ruta_png_temp)
         return Path(ruta_png_temp).exists()
-    except Exception:
+    except Exception as e:
+        try:
+            _registrar_diagnostico(self, ruta_raw, f"error de decodificación: {type(e).__name__}: {e}")
+        except Exception:
+            pass
         return False
 
 def png_a_astc_raw(ruta_png, ruta_raw_salida, bloque):
@@ -815,6 +819,8 @@ def aplicar_tema_oscuro(root):
 class AppMultiherramienta:
     def __init__(self, root):
         self.root = root
+        # El exportador de modelos reutiliza el mismo decodificador que el visor.
+        self.decode_texture_to_png = lambda ruta, salida: astc_raw_a_png(self, ruta, salida)
         self.root.title("XXAMI: DUMP Manager")
         self.root.geometry("1250x780")
         self.ruta_spv_actual, self.ruta_raw_actual, self.ruta_obj_actual, self.archivos_mapeados = None, None, None, {}
@@ -877,7 +883,14 @@ class AppMultiherramienta:
         self.lista_shaders.pack(side="left", expand=True, fill="both")
         self.lista_shaders.bind("<<ListboxSelect>>", lambda e: self.on_seleccionar_lista(self.lista_shaders))
         
-        fl_m = ttk.Frame(self.tab_sub_modelos)
+        self.nb_modelos = ttk.Notebook(self.tab_sub_modelos)
+        self.nb_modelos.pack(expand=True, fill="both")
+        self.tab_archivos_sueltos = ttk.Frame(self.nb_modelos)
+        self.tab_modelo_empaquetado = ttk.Frame(self.nb_modelos)
+        self.nb_modelos.add(self.tab_archivos_sueltos, text="Archivos sueltos")
+        self.nb_modelos.add(self.tab_modelo_empaquetado, text="Modelo empaquetado")
+
+        fl_m = ttk.Frame(self.tab_archivos_sueltos)
         fl_m.pack(expand=True, fill="both")
         sl_m = ttk.Scrollbar(fl_m, orient="vertical")
         self.lista_modelos = tk.Listbox(fl_m, yscrollcommand=sl_m.set, font=("Consolas", 9), background="#2b2b2b", foreground="#ffffff")
@@ -885,6 +898,26 @@ class AppMultiherramienta:
         sl_m.pack(side="right", fill="y")
         self.lista_modelos.pack(side="left", expand=True, fill="both")
         self.lista_modelos.bind("<<ListboxSelect>>", lambda e: self.on_seleccionar_lista(self.lista_modelos))
+
+        barra_paquete = ttk.Frame(self.tab_modelo_empaquetado, padding=4)
+        barra_paquete.pack(fill="x")
+        ttk.Label(barra_paquete, text="Modelo:").pack(side="left")
+        self.cb_modelo_empaquetado = ttk.Combobox(barra_paquete, state="readonly")
+        self.cb_modelo_empaquetado.pack(side="left", fill="x", expand=True, padx=5)
+        self.cb_modelo_empaquetado.bind("<<ComboboxSelected>>", lambda e: self._mostrar_archivos_modelo())
+        ttk.Button(barra_paquete, text="Parsear volcado de modelo", command=self.parsear_volcado_modelo).pack(side="right")
+        marco_lista_paquete = ttk.Frame(self.tab_modelo_empaquetado)
+        marco_lista_paquete.pack(expand=True, fill="both")
+        sb_paquete = ttk.Scrollbar(marco_lista_paquete, orient="vertical")
+        self.lista_archivos_modelo = tk.Listbox(marco_lista_paquete, yscrollcommand=sb_paquete.set,
+                                                font=("Consolas", 9), background="#2b2b2b", foreground="#ffffff",
+                                                exportselection=False)
+        sb_paquete.config(command=self.lista_archivos_modelo.yview)
+        sb_paquete.pack(side="right", fill="y")
+        self.lista_archivos_modelo.pack(side="left", expand=True, fill="both")
+        self.lista_archivos_modelo.bind("<<ListboxSelect>>", lambda e: self._previsualizar_archivo_modelo())
+        self.lista_archivos_modelo.bind("<Double-Button-1>", lambda e: self._abrir_archivo_modelo_seleccionado())
+        self._img_previa_modelo = None
 # Parte 7
         fl_t = ttk.Frame(self.tab_sub_texturas)
         fl_t.pack(expand=True, fill="both")
@@ -911,6 +944,17 @@ class AppMultiherramienta:
         self.tabs.add(self.tab_s, text=" Editor Shader SPIR-V ")
         self.tabs.add(self.tab_a, text=" Visor / Conversor Texturas RAW ASTC ")
         self.tabs.add(self.tab_3d, text=" Visor Geometría 3D (.OBJ) ")
+        self.tab_model_preview = ttk.Frame(self.tabs)
+        self.tabs.add(self.tab_model_preview, text=" Vista previa modelo ")
+        marco_previa_modelo = ttk.Frame(self.tab_model_preview)
+        marco_previa_modelo.pack(expand=True, fill="both", padx=6, pady=6)
+        self.lbl_previa_modelo = tk.Label(marco_previa_modelo, text="Selecciona un recurso en Modelos para previsualizarlo",
+                                           background="#111111", foreground="#dddddd", anchor="center")
+        self.lbl_previa_modelo.pack(expand=True, fill="both")
+        self.txt_previa_modelo = tk.Text(marco_previa_modelo, wrap="none", font=("Consolas", 10),
+                                         background="#1e1e1e", foreground="#d4d4d4")
+        self.txt_previa_modelo.pack(expand=True, fill="both")
+        self.txt_previa_modelo.pack_forget()
         self.tabs.pack(side="right", expand=True, fill="both", padx=5, pady=5)
         self.thumb_refs = []
 # Parte 8
@@ -997,6 +1041,7 @@ class AppMultiherramienta:
     def cargar_carpeta(self):
         dir_raiz = filedialog.askdirectory()
         if dir_raiz:
+            self.dir_raiz_volcado = Path(dir_raiz)
             self.entry_busqueda.delete(0, tk.END)
             self.archivos_mapeados.clear()
             self.texturas_reemplazadas.clear()
@@ -1058,9 +1103,198 @@ class AppMultiherramienta:
                 if lbl in self.archivos_mapeados: lbl = f"{p.parent.parent.name}/{p.parent.name}/{p.name}"
                 self.archivos_mapeados[lbl] = str(p)
             self.actualizar_interfaz_explorador()
+            self._cargar_modelos_empaquetados()
             if getattr(self, "pestana_trace", None):
                 try: self.pestana_trace.cargar_raiz(dir_raiz)
                 except Exception: _log(traceback.format_exc())
+
+    def _cargar_modelos_empaquetados(self):
+        """Indexa Models/Model_NN de todas las capturas sin duplicar entradas por cada Part."""
+        self._modelos_empaquetados = {}
+        if not hasattr(self, "cb_modelo_empaquetado"):
+            return
+        self.cb_modelo_empaquetado.set("")
+        self.cb_modelo_empaquetado["values"] = ()
+        self.lista_archivos_modelo.delete(0, tk.END)
+        raiz = getattr(self, "dir_raiz_volcado", None)
+        if not raiz or not raiz.exists():
+            return
+        for carpeta_models in sorted(raiz.rglob("Models"), key=lambda p: str(p).lower()):
+            if not carpeta_models.is_dir():
+                continue
+            submodelos = sorted((p for p in carpeta_models.iterdir() if p.is_dir() and re.match(r"^Model_\d+$", p.name, re.I)),
+                                key=lambda p: p.name.lower())
+            if submodelos:
+                for sub in submodelos:
+                    etiqueta = str(sub.relative_to(raiz))
+                    self._modelos_empaquetados[etiqueta] = sub
+            elif any(p.is_file() and p.name.lower().startswith("part") and p.suffix.lower() == ".buf" for p in carpeta_models.iterdir()):
+                etiqueta = str(carpeta_models.relative_to(raiz))
+                self._modelos_empaquetados[etiqueta] = carpeta_models
+        valores = list(self._modelos_empaquetados)
+        self.cb_modelo_empaquetado["values"] = valores
+        if valores:
+            self.cb_modelo_empaquetado.current(0)
+            self._mostrar_archivos_modelo()
+        else:
+            self.lista_archivos_modelo.insert(tk.END, "(No se encontraron Models/Model_NN en esta carpeta)")
+
+    def _ruta_modelo_empaquetado(self):
+        etiqueta = self.cb_modelo_empaquetado.get()
+        return getattr(self, "_modelos_empaquetados", {}).get(etiqueta)
+
+    def _mostrar_archivos_modelo(self):
+        self.lista_archivos_modelo.delete(0, tk.END)
+        carpeta = self._ruta_modelo_empaquetado()
+        if not carpeta:
+            return
+        for ruta in sorted((p for p in carpeta.rglob("*") if p.is_file()), key=lambda p: str(p).lower()):
+            self.lista_archivos_modelo.insert(tk.END, str(ruta.relative_to(carpeta)))
+
+    def _previsualizar_archivo_modelo(self):
+        sel = self.lista_archivos_modelo.curselection()
+        carpeta = self._ruta_modelo_empaquetado()
+        if not sel or not carpeta:
+            return
+        ruta = carpeta / self.lista_archivos_modelo.get(sel[0])
+        if not ruta.is_file():
+            return
+        ext = ruta.suffix.lower()
+        # Los buffers PartNN ya tienen un analizador/visor real en Frame Trace.
+        # Reutilizarlo evita mostrar solo bytes hexadecimales en la vista empaquetada.
+        if ext == ".buf" and getattr(self, "pestana_trace", None):
+            self.abrir_archivo_por_ruta(str(ruta))
+            return
+        # Para texturas, abrir el visor común de Texturas con la ruta exacta del
+        # archivo empaquetado; el helper conserva formato, diagnóstico y metadatos.
+        if ext in (".ktx2", ".raw"):
+            self.tabs.select(self.tab_a)
+            if self._cargar_textura_por_ruta(str(ruta)):
+                return
+            if hasattr(self, "tabs") and hasattr(self, "tab_model_preview"):
+                self.tabs.select(self.tab_model_preview)
+        elif hasattr(self, "tabs") and hasattr(self, "tab_model_preview"):
+            self.tabs.select(self.tab_model_preview)
+        self.txt_previa_modelo.pack_forget()
+        self.lbl_previa_modelo.pack(expand=True, fill="both")
+        tamano_archivo = ruta.stat().st_size
+        self.lbl_previa_modelo.config(image="", text=f"{ruta.name}\\n{tamano_archivo:,} bytes")
+        self._img_previa_modelo = None
+        ext = ruta.suffix.lower()
+        if ext in (".ktx2", ".raw"):
+            png = Path(tempfile.gettempdir()) / ("xxami_model_preview_" + str(abs(hash(str(ruta.resolve())))) + ".png")
+            motivo = None
+            try:
+                # Misma ruta de decodificación e información que usa la pestaña Texturas.
+                ok = astc_raw_a_png(self, str(ruta), str(png))
+                motivo = getattr(self, "_diagnostico_textura", {}).get(str(ruta))
+                if ok:
+                    with Image.open(str(png)) as im:
+                        im = im.convert("RGBA")
+                        dimensiones_png = im.size
+                        im.thumbnail((850, 680), Image.Resampling.LANCZOS)
+                        self._img_previa_modelo = ImageTk.PhotoImage(im)
+                    info = obtener_info_formato(str(ruta))
+                    codigo = obtener_codigo_formato(str(ruta))
+                    nombre_fmt = info["nombre"] if info else (f"fmt{codigo}" if codigo is not None else "desconocido")
+                    tipo = info["tipo"] if info else "formato no catalogado"
+                    extra = ""
+                    if ktx2_util and ktx2_util.es_ktx2(str(ruta)):
+                        ki = ktx2_util.info_textura(str(ruta))
+                        if ki:
+                            extra = f"\\nKTX2: {ki.resumen()}"
+                    detalle = f"{ruta.name}\\n{dimensiones_png[0]}×{dimensiones_png[1]} px · {nombre_fmt} · {tipo}\\n{tamano_archivo / 1024:.2f} KB{extra}"
+                    if motivo:
+                        detalle += f"\\n⚠ {motivo}"
+                    self.lbl_previa_modelo.config(image=self._img_previa_modelo, text=detalle, compound="top")
+                else:
+                    motivo = motivo or "No se pudo decodificar; revisa el diagnóstico."
+                    info = obtener_info_formato(str(ruta))
+                    codigo = obtener_codigo_formato(str(ruta))
+                    nombre_fmt = info["nombre"] if info else (f"fmt{codigo}" if codigo is not None else "desconocido")
+                    extra = ""
+                    if ktx2_util and ktx2_util.es_ktx2(str(ruta)):
+                        try:
+                            ki = ktx2_util.leer_cabecera(str(ruta))
+                            fin_niveles = max((off + largo for off, largo, _ in ki.indice), default=0)
+                            extra = f"\\nKTX2: {ki.resumen()}\\nFin de nivel declarado: {fin_niveles:,} / tamaño real: {tamano_archivo:,} bytes"
+                        except Exception as e:
+                            extra = f"\\nCabecera KTX2: {e}"
+                    self.lbl_previa_modelo.config(text=f"{ruta.name}\\n{nombre_fmt} · {tamano_archivo / 1024:.2f} KB\\nNo se pudo decodificar: {motivo}{extra}", justify="center")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"{ruta.name}\\n{tamano_archivo / 1024:.2f} KB\\nError: {type(e).__name__}: {e}", justify="center")
+        elif ext in (".png", ".jpg", ".jpeg", ".bmp"):
+            try:
+                with Image.open(str(ruta)) as im:
+                    im = im.convert("RGBA")
+                    im.thumbnail((700, 600), Image.Resampling.LANCZOS)
+                    self._img_previa_modelo = ImageTk.PhotoImage(im)
+                self.lbl_previa_modelo.config(image=self._img_previa_modelo, text="")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"No se pudo abrir imagen: {e}")
+        elif ext in (".txt", ".json"):
+            try:
+                contenido = ruta.read_text(encoding="utf-8", errors="replace")
+                self.lbl_previa_modelo.pack_forget()
+                self.txt_previa_modelo.pack(expand=True, fill="both")
+                self.txt_previa_modelo.config(state="normal")
+                self.txt_previa_modelo.delete("1.0", tk.END)
+                self.txt_previa_modelo.insert("1.0", contenido[:200000])
+                self.txt_previa_modelo.config(state="disabled")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"No se pudo leer texto: {e}")
+        elif ext == ".buf":
+            try:
+                data = ruta.read_bytes()
+                preview = data[:512].hex(" ")
+                self.lbl_previa_modelo.config(text=f"{ruta.name}\\n{len(data):,} bytes\\nPrimeros 512 bytes (hex):\\n{preview}")
+            except Exception as e:
+                self.lbl_previa_modelo.config(text=f"No se pudo leer buffer: {e}")
+
+    def _abrir_archivo_modelo_seleccionado(self):
+        sel = self.lista_archivos_modelo.curselection()
+        carpeta = self._ruta_modelo_empaquetado()
+        if not sel or not carpeta:
+            return
+        ruta = carpeta / self.lista_archivos_modelo.get(sel[0])
+        if ruta.is_file():
+            self.abrir_archivo_por_ruta(str(ruta))
+
+    def parsear_volcado_modelo(self):
+        """Convierte texturas KTX2/RAW del modelo a PNG, conservando originales y nombres/slots."""
+        carpeta = self._ruta_modelo_empaquetado()
+        if not carpeta or not carpeta.is_dir():
+            messagebox.showinfo("Parsear volcado de modelo", "Selecciona un modelo empaquetado válido.")
+            return
+        decodificador = getattr(self, "decode_texture_to_png", None)
+        if decodificador is None:
+            messagebox.showerror("Parsear volcado de modelo", "El decodificador de texturas no está disponible.")
+            return
+        texturas = sorted((p for p in carpeta.rglob("*") if p.is_file() and p.suffix.lower() in (".ktx2", ".raw")),
+                          key=lambda p: str(p).lower())
+        if not texturas:
+            messagebox.showinfo("Parsear volcado de modelo", "Este modelo no contiene texturas .ktx2 ni .raw.")
+            return
+        convertidas, omitidas, errores = 0, 0, []
+        for textura in texturas:
+            # Un PNG por archivo fuente conserva el nombre del slot (Part00Diffuse,
+            # Part00BumpMap, etc.); los originales y sus hashes no se alteran.
+            destino = textura.with_suffix(".png")
+            try:
+                if destino.exists():
+                    omitidas += 1
+                    continue
+                if decodificador(str(textura), str(destino)):
+                    convertidas += 1
+                else:
+                    errores.append(f"{textura.name}: el decodificador no pudo convertirla")
+            except Exception as e:
+                errores.append(f"{textura.name}: {e}")
+        self._mostrar_archivos_modelo()
+        resumen = f"PNG creados: {convertidas}. Ya existentes/duplicados omitidos: {omitidas}."
+        if errores:
+            resumen += "\n\nAvisos:\n" + "\n".join(errores[:12])
+        messagebox.showinfo("Parsear volcado de modelo", resumen)
 
     def actualizar_interfaz_explorador(self):
         self.lista_shaders.delete(0, tk.END)
@@ -1075,8 +1309,10 @@ class AppMultiherramienta:
         for lbl, ruta in sorted(self.archivos_mapeados.items(), key=lambda x: x[0].lower()):
             if texto_filtro and texto_filtro not in lbl.lower(): continue
             if ruta.endswith('.spv'): self.lista_shaders.insert(tk.END, f" 📄 {lbl}")
-            elif ruta.endswith('.buf'):
-                if es_modelo_listable(ruta): self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
+            elif ruta.endswith(('.buf', '.txt', '.json')):
+                # La vista de archivos sueltos permite abrir cualquier buffer y sus metadatos,
+                # no solo los buffers de vértices que pueden reconstruirse como malla.
+                self.lista_modelos.insert(tk.END, f" 📄 {lbl}")
             elif ruta.endswith(('.raw', '.ktx2')): claves_texturas.append(lbl)
 
         # Límite de seguridad por GDI: cada miniatura necesita un PhotoImage, y eso
@@ -1226,6 +1462,23 @@ class AppMultiherramienta:
             self.ruta_obj_actual = ruta
             self.lbl_3d.config(text=f"Modelo Activo: {Path(ruta).name}")
             self.cargar_modelo_obj(ruta)
+        elif ruta.endswith(('.txt', '.json')):
+            try:
+                if hasattr(os, "startfile"):
+                    os.startfile(ruta)
+                else:
+                    subprocess.Popen([ruta])
+            except Exception as e:
+                messagebox.showerror("Abrir archivo", f"No se pudo abrir {Path(ruta).name}: {e}")
+
+    def _cargar_textura_por_ruta(self, ruta):
+        """Carga una textura por ruta absoluta usando el mismo visor que el explorador."""
+        ruta = str(ruta)
+        ruta_lectura = self.texturas_reemplazadas.get(ruta, ruta)
+        if not astc_raw_a_png(self, ruta_lectura, str(self.img_cache)):
+            return False
+        self._presentar_textura_cargada(ruta, ruta_lectura)
+        return True
 
     def cargar_textura_desde_explorador(self, lbl):
         ruta = self.archivos_mapeados.get(lbl)
@@ -1233,56 +1486,59 @@ class AppMultiherramienta:
         self.tabs.select(self.tab_a)
         ruta_lectura = self.texturas_reemplazadas.get(ruta, ruta)
         if astc_raw_a_png(self, ruta_lectura, str(self.img_cache)):
-            self.ruta_raw_actual = ruta
-            with Image.open(str(self.img_cache)) as img_abierta:
-                img = img_abierta.copy()  # copia desvinculada del archivo: se puede cerrar ya el handle
-            orig_w, orig_h = img.size
-            try: datos_fieles = leer_datos_textura(ruta_lectura)
-            except Exception: datos_fieles = b""
-            info_formato = obtener_info_formato(ruta_lectura)
-            codigo_formato = obtener_codigo_formato(ruta_lectura)
-            motivo_diagnostico = self._diagnostico_textura.get(ruta_lectura)
-            color_estado = "#00ff66"
-            if codigo_formato in FORMATOS_NO_VISUALIZABLES or (motivo_diagnostico and motivo_diagnostico.startswith("archivo vacío")):
-                # El PNG cargado es el aviso "notload", no la textura real: las dimensiones
-                # que se muestran son las declaradas en el nombre de archivo, no las del aviso.
-                orig_w, orig_h = parsear_dimensiones(ruta_lectura)
-                nombre_fmt = info_formato["nombre"] if info_formato else f"fmt{codigo_formato}"
-                detalle = motivo_diagnostico or "no es una imagen; datos sin forma reconocible"
-                fmt_real = f"{nombre_fmt} — ⚠ NO SE HA PODIDO LEER CORRECTAMENTE LA TEXTURA ({detalle})"
-                color_estado = "#ff3333"
-                motivo_diagnostico = None  # ya quedó explicado arriba; no lo dupliques abajo
-            elif info_formato is not None and info_formato["tipo"] == "astc":
-                bloque_real = info_formato["bloque"]
-                fmt_real = f"ASTC {bloque_real} (VK_FORMAT_{info_formato['nombre']})"
-                self.cb.set(bloque_real)
-            elif info_formato is not None and info_formato["tipo"] == "etc2":
-                fmt_real = f"ETC2 4x4 (VK_FORMAT_{info_formato['nombre']})"
-                self.cb.set("4x4")
-            elif info_formato is not None:
-                fmt_real = f"{info_formato['nombre']} (sin comprimir)"
-                if len(info_formato["canales"]) == 1 and img.mode == "RGBA" and img.getchannel("A").getextrema()[0] < 255:
-                    fmt_real += " → interpretada como máscara alfa"
-            else:
-                # fmt no catalogado: astc_raw_a_png ya probó ASTC/ETC2/BC y dejó el resultado
-                # en motivo_diagnostico; no asumimos "ASTC" a ciegas como antes.
-                fmt_real = f"fmt{codigo_formato} no catalogado" if codigo_formato is not None else "formato no identificable"
-                bloque_estimado = detectar_bloque_astc(orig_w, orig_h, len(datos_fieles))
-                self.cb.set(bloque_estimado)
-            if motivo_diagnostico is not None and color_estado != "#ff3333":
-                fmt_real += f"\n• ⚠ {motivo_diagnostico}"
-                color_estado = "#ffaa00"
-            if ruta in self.texturas_reemplazadas: fmt_real += " [ MODIFICADA ]"
-            disp_img = img.copy()
-            disp_img.thumbnail((500, 500))
-            tk_i = ImageTk.PhotoImage(componer_sobre_tablero(disp_img))
-            self.p_img.config(image=tk_i, text="")
-            self.p_img.image = tk_i
-            extra_ktx = ""
-            if ktx2_util and ktx2_util.es_ktx2(ruta_lectura):
-                _ki = ktx2_util.info_textura(ruta_lectura)
-                if _ki: extra_ktx = f"\n• Contenedor: KTX2 ({_ki.resumen()}); se muestra el nivel 0"
-            self.p_txt.config(foreground=color_estado, text=f"[ INFORMACIÓN DE TEXTURA ]\n• Dimensiones: {orig_w}x{orig_h} px\n• Formato GPU: {fmt_real}\n• Codificación: UNORM\n• Peso: {os.path.getsize(ruta_lectura)/1024:.2f} KB{extra_ktx}\n• Ruta: {Path(ruta).name}")
+            self._presentar_textura_cargada(ruta, ruta_lectura)
+
+    def _presentar_textura_cargada(self, ruta, ruta_lectura):
+        self.ruta_raw_actual = ruta
+        with Image.open(str(self.img_cache)) as img_abierta:
+            img = img_abierta.copy()  # copia desvinculada del archivo: se puede cerrar ya el handle
+        orig_w, orig_h = img.size
+        try: datos_fieles = leer_datos_textura(ruta_lectura)
+        except Exception: datos_fieles = b""
+        info_formato = obtener_info_formato(ruta_lectura)
+        codigo_formato = obtener_codigo_formato(ruta_lectura)
+        motivo_diagnostico = self._diagnostico_textura.get(ruta_lectura)
+        color_estado = "#00ff66"
+        if codigo_formato in FORMATOS_NO_VISUALIZABLES or (motivo_diagnostico and motivo_diagnostico.startswith("archivo vacío")):
+            # El PNG cargado es el aviso "notload", no la textura real: las dimensiones
+            # que se muestran son las declaradas en el nombre de archivo, no las del aviso.
+            orig_w, orig_h = parsear_dimensiones(ruta_lectura)
+            nombre_fmt = info_formato["nombre"] if info_formato else f"fmt{codigo_formato}"
+            detalle = motivo_diagnostico or "no es una imagen; datos sin forma reconocible"
+            fmt_real = f"{nombre_fmt} — ⚠ NO SE HA PODIDO LEER CORRECTAMENTE LA TEXTURA ({detalle})"
+            color_estado = "#ff3333"
+            motivo_diagnostico = None  # ya quedó explicado arriba; no lo dupliques abajo
+        elif info_formato is not None and info_formato["tipo"] == "astc":
+            bloque_real = info_formato["bloque"]
+            fmt_real = f"ASTC {bloque_real} (VK_FORMAT_{info_formato['nombre']})"
+            self.cb.set(bloque_real)
+        elif info_formato is not None and info_formato["tipo"] == "etc2":
+            fmt_real = f"ETC2 4x4 (VK_FORMAT_{info_formato['nombre']})"
+            self.cb.set("4x4")
+        elif info_formato is not None:
+            fmt_real = f"{info_formato['nombre']} (sin comprimir)"
+            if len(info_formato["canales"]) == 1 and img.mode == "RGBA" and img.getchannel("A").getextrema()[0] < 255:
+                fmt_real += " → interpretada como máscara alfa"
+        else:
+            # fmt no catalogado: astc_raw_a_png ya probó ASTC/ETC2/BC y dejó el resultado
+            # en motivo_diagnostico; no asumimos "ASTC" a ciegas como antes.
+            fmt_real = f"fmt{codigo_formato} no catalogado" if codigo_formato is not None else "formato no identificable"
+            bloque_estimado = detectar_bloque_astc(orig_w, orig_h, len(datos_fieles))
+            self.cb.set(bloque_estimado)
+        if motivo_diagnostico is not None and color_estado != "#ff3333":
+            fmt_real += f"\n• ⚠ {motivo_diagnostico}"
+            color_estado = "#ffaa00"
+        if ruta in self.texturas_reemplazadas: fmt_real += " [ MODIFICADA ]"
+        disp_img = img.copy()
+        disp_img.thumbnail((500, 500))
+        tk_i = ImageTk.PhotoImage(componer_sobre_tablero(disp_img))
+        self.p_img.config(image=tk_i, text="")
+        self.p_img.image = tk_i
+        extra_ktx = ""
+        if ktx2_util and ktx2_util.es_ktx2(ruta_lectura):
+            _ki = ktx2_util.info_textura(ruta_lectura)
+            if _ki: extra_ktx = f"\n• Contenedor: KTX2 ({_ki.resumen()}); se muestra el nivel 0"
+        self.p_txt.config(foreground=color_estado, text=f"[ INFORMACIÓN DE TEXTURA ]\n• Dimensiones: {orig_w}x{orig_h} px\n• Formato GPU: {fmt_real}\n• Codificación: UNORM\n• Peso: {os.path.getsize(ruta_lectura)/1024:.2f} KB{extra_ktx}\n• Ruta: {Path(ruta).name}")
 
     def reemplazar_textura_por_png(self):
         if not self.ruta_raw_actual: return
