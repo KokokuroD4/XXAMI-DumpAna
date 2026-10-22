@@ -1,0 +1,42 @@
+# License and Terms of Use
+
+Copyright (c) 2026 Kokokuro*. All rights reserved.
+
+Permission is hereby granted to compile, execute, and use this software 
+solely for personal, educational, or internal development purposes, 
+subject to the following conditions:
+
+1. DERIVATIVE WORKS AND MODIFICATIONS: The creation, distribution, or 
+publication of any derivative work, fork, or modified version of this software 
+is strictly prohibited without the express, prior, written authorization of the original author.
+
+2. ORIGINALITY REQUIREMENT: In the event that written authorization to create a derivative work is granted, 
+such work must provide substantial technical value, new features, or significant architectural changes. 
+The creation of clones, identical distributions, mere interface changes ("re-skins"), 
+or near-identical copies that utilize the core logic of this software is expressly prohibited.
+
+3. EXCLUSION OF WARRANTY: THIS SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. 
+THE AUTHOR SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGE, OR LIABILITY ARISING FROM THE USE OF THIS TOOL.
+
+## Third-Party Components and Open Source Licenses
+
+This software bundles and uses the following third-party components:
+
+1. ARM astc-encoder (astcenc.exe)
+   License: Apache License 2.0
+   Copyright (c) 2013-2026 Arm Limited
+
+2. Khronos glslang (glslangValidator.exe)
+   License: BSD 3-Clause / Apache 2.0
+   Copyright (C) 2012-2026 LunarG, Inc.
+
+3. Google Shaderc (glslc.exe)
+   License: Apache License 2.0
+   Copyright 2015-2026 The Shaderc Authors
+
+4. Khronos SPIRV-Tools & SPIRV-Cross (spirv-as, spirv-cross, spirv-dis)
+   License: Apache License 2.0 / MIT
+   Copyright (c) 2015-2026 The Khronos Group Inc.
+
+The full text of the Apache 2.0, MIT, and BSD licenses can be found in their respective official repositories or via the provided links. 
+This software is distributed as an aggregate and does not modify the source code of these tools.
