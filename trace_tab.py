@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 import xxami_trace as X
 
@@ -42,6 +42,9 @@ class PestanaTrace:
         self._material_vars = {}
         self._material_panel = None
         self._ctx_buf = None      # buffer abierto desde la lista Modelos y los draws que lo usan
+        self._gl_context = None
+        self._gl_renderer = None
+        self._gl_error_reported = False
         self._construir_lateral()
         self._construir_principal()
 
@@ -127,6 +130,7 @@ class PestanaTrace:
 
         self.lbl_img.bind("<ButtonPress-1>", self._seguro(self._inicio_arrastre))
         self.lbl_img.bind("<B1-Motion>", self._seguro(self._arrastrar))
+        self.lbl_img.bind("<ButtonRelease-1>", self._seguro(self._fin_arrastre))
         self.lbl_img.bind("<MouseWheel>", self._seguro(self._rueda))
         self.lbl_img.bind("<Configure>", self._seguro(lambda e=None: self._redibujar(forzar=True)))
 
@@ -531,6 +535,7 @@ class PestanaTrace:
         if hasattr(self.app, "abrir_archivo_por_ruta"):
             self.app.abrir_archivo_por_ruta(cadena)
 
+
     # ------------------------------------------------------------------ dibujo
     def _tam_imagen(self):
         w, h = self.lbl_img.winfo_width(), self.lbl_img.winfo_height()
@@ -552,13 +557,26 @@ class PestanaTrace:
         self._redibujar(forzar=True)
 
     def _construir_panel_material(self, parent):
-        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid", padx=4, pady=3)
-        self._material_panel.configure(width=300, height=190)
+        self._material_panel = tk.Frame(parent, bg="#171717", bd=1, relief="solid", padx=5, pady=4)
+        self._material_panel.configure(width=330, height=190)
+        self._iconos_material = {}
+        base = Path(__file__).resolve().parent
+        for clave, archivo in (("visibilidad", "visibility.png"), ("alpha", "invert_alpha.png")):
+            try:
+                icono = Image.open(base / archivo).convert("RGBA")
+                icono.thumbnail((22, 22), Image.Resampling.LANCZOS)
+                self._iconos_material[clave] = ImageTk.PhotoImage(icono)
+            except Exception as exc:
+                self._iconos_material[clave] = None
+                self._log(f"[Material] No se pudo cargar icono {archivo}: {exc}")
         self._material_panel.pack_propagate(False)
         cab = tk.Frame(self._material_panel, bg="#171717")
         cab.pack(fill="x", padx=4, pady=(3, 1))
-        tk.Label(cab, text="◉", bg="#171717", fg="#ffffff").pack(side="left", padx=(2, 8))
-        tk.Label(cab, text="Materiales", bg="#171717", fg="#ffffff").pack(side="left")
+        tk.Label(cab, text="◉", bg="#171717", fg="#ffffff", width=2).grid(row=0, column=0, sticky="w")
+        tk.Label(cab, text="Materiales", bg="#171717", fg="#ffffff", anchor="w").grid(row=0, column=1, sticky="w")
+        tk.Label(cab, image=self._iconos_material.get("visibilidad"), bg="#171717", width=28, height=24).grid(row=0, column=2, padx=(5, 2))
+        tk.Label(cab, image=self._iconos_material.get("alpha"), bg="#171717", width=28, height=24).grid(row=0, column=3, padx=(2, 5))
+        cab.grid_columnconfigure(1, weight=1)
         self._material_lista = tk.Frame(self._material_panel, bg="#171717")
         self._material_lista.pack(fill="both", expand=True, padx=4, pady=3)
         self._material_panel.place(relx=1.0, x=-12, y=12, anchor="ne")
@@ -654,18 +672,35 @@ class PestanaTrace:
             tk.Label(self._material_lista, text="No hay texturas volcadas", bg="#171717", fg="#bbbbbb").pack(anchor="w")
             self._material_panel.configure(width=300, height=70)
             return
+        # Iconos de 64x64 reducidos para que expliquen los dos checks sin ocupar espacio.
+        if not hasattr(self, "_iconos_material"):
+            self._iconos_material = {}
+            base = Path(__file__).resolve().parent
+            for clave, archivo in (("visibilidad", "visibility.png"), ("alpha", "invert_alpha.png")):
+                try:
+                    icono = Image.open(base / archivo).convert("RGBA")
+                    icono.thumbnail((16, 16), Image.Resampling.LANCZOS)
+                    self._iconos_material[clave] = ImageTk.PhotoImage(icono)
+                except Exception:
+                    self._iconos_material[clave] = None
         for ruta, nombre in candidatos:
             fila = tk.Frame(self._material_lista, bg="#171717")
             fila.pack(fill="x", anchor="w")
             activo = tk.BooleanVar(value=True)
             invertir = tk.BooleanVar(value=False)
             self._material_vars[ruta] = (activo, invertir)
+            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=28).grid(row=0, column=0, sticky="w")
             tk.Checkbutton(fila, variable=activo, bg="#171717", activebackground="#171717",
-                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
+                           fg="#ffffff", selectcolor="#303030", indicatoron=True,
+                           bd=0, relief="flat", overrelief="flat", highlightthickness=0,
+                           padx=2, pady=0,
+                           command=self._seguro(lambda: self._redibujar(forzar=True))).grid(row=0, column=1, padx=(3, 7))
             tk.Checkbutton(fila, variable=invertir, bg="#171717", activebackground="#171717",
-                           fg="#ffffff", selectcolor="#303030", command=self._seguro(lambda: self._redibujar(forzar=True))).pack(side="left")
-            tk.Label(fila, text=nombre, bg="#171717", fg="#40bfff", anchor="w", width=29).pack(side="left")
-        self._material_panel.configure(width=330, height=min(300, 42 + 27 * len(candidatos)))
+                           fg="#ffffff", selectcolor="#303030", indicatoron=True,
+                           bd=0, relief="flat", overrelief="flat", highlightthickness=0,
+                           padx=2, pady=0,
+                           command=self._seguro(lambda: self._redibujar(forzar=True))).grid(row=0, column=2, padx=(3, 7))
+        self._material_panel.configure(width=330, height=min(300, 48 + 25 * len(candidatos)))
 
     def _texturas_material_activas(self):
         activas = []
@@ -702,11 +737,45 @@ class PestanaTrace:
         else:
             modo_render, textura = modo, None
         w, h = self._tam_imagen()
+        # En Material no se submuestrean caras: omitir triángulos produce huecos.
+        # Durante el arrastre reducimos la resolución, pero dibujamos toda la malla.
+        interactivo = self._arrastre is not None
+        if modo_render == "material" and interactivo:
+            w, h = max(240, w // 2), max(180, h // 2)
+        limite = max(120000, len(self.malla.caras), len(self.malla.lineas))
+        # OpenGL acelera Sólido y Material. Los demás modos conservan el renderizador
+        # existente; si falla la inicialización/dibujo, se degrada a software.
+        if modo_render in ("solido", "material") and len(self.malla.caras):
+            try:
+                if self._gl_renderer is None:
+                    from xxami_gl import SDL3GLContext, GLMeshRenderer
+                    ctx = SDL3GLContext()
+                    estado = ctx.create(title="XXAMI DumpAna GPU framebuffer", width=1200,
+                                        height=900, hidden=True)
+                    if not estado.available:
+                        raise RuntimeError(estado.message)
+                    self._gl_context = ctx
+                    self._gl_renderer = GLMeshRenderer(ctx)
+                imagen_gpu = self._gl_renderer.render_image(
+                    self.malla.pos, self.malla.uv, self.malla.caras, textura if modo_render == "material" else None,
+                    w, h, self.rot_x, self.rot_y, self.zoom)
+                self._pintar(imagen_gpu)
+                self.lbl_estado.config(text=f"OpenGL activo · {self._gl_context.status.renderer}")
+                return
+            except Exception as exc:
+                self._log("[OpenGL] Render GPU falló; se usa software: " + traceback.format_exc())
+                if not self._gl_error_reported:
+                    self._gl_error_reported = True
+                    self.lbl_estado.config(text="OpenGL falló; visor por software")
         self._pintar(X.renderizar_malla(self.malla, w, h, self.rot_x, self.rot_y, self.zoom,
-                                        modo_render, textura_material=textura))
+                                        modo_render, max_elementos=limite, textura_material=textura))
 
     def _inicio_arrastre(self, e):
         self._arrastre = (e.x, e.y)
+
+    def _fin_arrastre(self, _e=None):
+        self._arrastre = None
+        self._redibujar(forzar=True)
 
     def _arrastrar(self, e):
         if self._arrastre is None:
