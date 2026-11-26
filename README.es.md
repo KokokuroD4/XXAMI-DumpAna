@@ -92,6 +92,12 @@ En las versiones empaquetadas, conserva junto al ejecutable el directorio `lang/
 - `TOOLS_BUILD.es.md` — guía detallada de ejecución y compilación (español).
 - `TOOLS_BUILD.md` — detailed build and usage guide (English).
 
+## Aviso de uso de IA
+
+Se han utilizado herramientas de inteligencia artificial como apoyo durante el desarrollo de algunas partes del código fuente. Su uso se limitó a asistir en determinadas tareas de programación y desarrollo; esto no significa que el proyecto haya sido generado íntegramente por IA.
+
+**Todos los aspectos visuales y de diseño del proyecto han sido realizados íntegramente por personas.** Esto incluye la identidad visual, los gráficos, el diseño de las interfaces y los demás elementos visuales, que no han sido generados mediante IA.
+
 ## Notas
 
 Este repositorio está orientado a la inspección y visualización de recursos. Las funciones de renderizado y la disponibilidad de cada API varían según el backend y el hardware; la vista previa de materiales es aproximada y no constituye un renderizador PBR completo. Consulta la guía de compilación para conocer los detalles de implementación y las limitaciones actuales.
