@@ -77,7 +77,7 @@ python model_viewer_qt.py --root "D:\\path\\to\\dump" "D:\\path\\to\\dump\\vb_ex
 
 ## Building standalone Windows executables
 
-The Explorer and Viewer can be packaged separately with PyInstaller. The complete commands, hidden imports, resource handling and distribution notes are maintained in **[EXPLORER_BUILD.md](EXPLORER_BUILD.md)**.
+The Explorer and Viewer can be packaged separately with PyInstaller. The complete commands, hidden imports, resource handling and distribution notes are maintained in **[TOOLS_BUILD.md](TOOLS_BUILD.md)** (English) · **[TOOLS_BUILD.es.md](TOOLS_BUILD.es.md)** (Español).
 
 For packaged builds, keep the appropriate `lang/` directory alongside the executable so language catalogs remain external and independently updateable. Keep the required `res/` resources available as described in the build guide.
 
@@ -89,7 +89,8 @@ For packaged builds, keep the appropriate `lang/` directory alongside the execut
 - `texture_decoder.py`, `ktx2_util.py` — shared texture and KTX2 utilities.
 - `xxami_render_backend.py` and the backend modules — rendering backend selection and implementations.
 - `lang/explorer_lang/` and `lang/viewer_lang/` — independent language catalogs for each application.
-- `EXPLORER_BUILD.md` — detailed execution, packaging and resource-distribution guide.
+- `TOOLS_BUILD.md` — detailed build and usage guide (English).
+- `TOOLS_BUILD.es.md` — detailed build and usage guide (Spanish).
 
 ## Notes
 
