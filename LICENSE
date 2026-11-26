@@ -2,41 +2,69 @@
 
 Copyright (c) 2026 Kokokuro*. All rights reserved.
 
-Permission is hereby granted to compile, execute, and use this software 
-solely for personal, educational, or internal development purposes, 
-subject to the following conditions:
+## 1. Scope
 
-1. DERIVATIVE WORKS AND MODIFICATIONS: The creation, distribution, or 
-publication of any derivative work, fork, or modified version of this software 
-is strictly prohibited without the express, prior, written authorization of the original author.
+These terms apply only to the original material authored for **XXAMI DumpAna**, including its source code, application interfaces, documentation, configuration files, and original visual assets, unless a file or component contains a separate license or third-party notice.
 
-2. ORIGINALITY REQUIREMENT: In the event that written authorization to create a derivative work is granted, 
-such work must provide substantial technical value, new features, or significant architectural changes. 
-The creation of clones, identical distributions, mere interface changes ("re-skins"), 
-or near-identical copies that utilize the core logic of this software is expressly prohibited.
+XXAMI DumpAna is a suite composed of the following independent applications and supporting components:
 
-3. EXCLUSION OF WARRANTY: THIS SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. 
-THE AUTHOR SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGE, OR LIABILITY ARISING FROM THE USE OF THIS TOOL.
+- **AMI Resource Explorer**: Qt-based resource and package browser, editor, and resource-management interface.
+- **AMI 3D Viewer**: Qt-based model and Frame Trace viewer, including its rendering backends.
+- **Shared modules**: resource and texture decoding, KTX2 utilities, Frame Trace processing, logging, and rendering-backend integration.
+- **Diagnostic and test utilities**: GPU and graphics-API probes, rendering tests, and related development tools.
 
-## Third-Party Components and Open Source Licenses
+The Explorer and Viewer are independent applications. The removal of the former DumpAna GUI does not change the scope of this license: the terms cover the current suite described above, not the discontinued interface.
 
-This software bundles and uses the following third-party components:
+## 2. Permission to Use
 
-1. ARM astc-encoder (astcenc.exe)
-   License: Apache License 2.0
-   Copyright (c) 2013-2026 Arm Limited
+Permission is hereby granted to compile, execute, and use the original XXAMI DumpAna material solely for personal, educational, or internal development purposes, subject to all conditions in this document.
 
-2. Khronos glslang (glslangValidator.exe)
-   License: BSD 3-Clause / Apache 2.0
-   Copyright (C) 2012-2026 LunarG, Inc.
+This permission does not grant ownership of the software or any right not expressly stated here.
 
-3. Google Shaderc (glslc.exe)
-   License: Apache License 2.0
-   Copyright 2015-2026 The Shaderc Authors
+## 3. Derivative Works and Modifications
 
-4. Khronos SPIRV-Tools & SPIRV-Cross (spirv-as, spirv-cross, spirv-dis)
-   License: Apache License 2.0 / MIT
-   Copyright (c) 2015-2026 The Khronos Group Inc.
+The creation, distribution, or publication of any derivative work, fork, or modified version of the original XXAMI DumpAna material is strictly prohibited without the express, prior, written authorization of the original author.
 
-The full text of the Apache 2.0, MIT, and BSD licenses can be found in their respective official repositories or via the provided links. 
-This software is distributed as an aggregate and does not modify the source code of these tools.
+If written authorization is granted, the authorized work must provide substantial technical value, new features, or significant architectural changes. Clones, identical distributions, mere interface changes ("re-skins"), and near-identical copies that use the core logic of this software are not permitted.
+
+## 4. Third-Party Components
+
+Third-party components are **not** relicensed by this document. They remain subject to their own licenses and copyright notices. If a third-party license conflicts with these terms, that third-party license governs the relevant component.
+
+### Bundled command-line tools
+
+The current repository includes the following third-party executable tools:
+
+1. **Khronos SPIRV-Cross** (`spirv-cross.exe`)  
+   License: Apache License 2.0.  
+   Project: https://github.com/KhronosGroup/SPIRV-Cross
+
+2. **Khronos SPIRV-Tools** (`spirv-dis.exe`)  
+   License: Apache License 2.0.  
+   Project: https://github.com/KhronosGroup/SPIRV-Tools
+
+The applicable upstream license text and any required NOTICE or attribution files must be retained and supplied when redistributing these tools. Their presence in this repository does not make them subject to the XXAMI DumpAna terms above.
+
+### Python and build-time dependencies
+
+The applications also use separately distributed third-party packages, depending on the application and installation/build configuration. These include:
+
+- PySide6 / Qt
+- NumPy
+- Pillow
+- texture2ddecoder
+- zstandard
+- wgpu-py
+- PyInstaller (build-time)
+
+These packages are not granted or relicensed under the XXAMI DumpAna terms. Each remains subject to its own license, notices, and distribution requirements. Consult the corresponding upstream project and package distribution for the license version applicable to the version you install or bundle.
+
+## 5. No Warranty
+
+THIS SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE AUTHOR SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGE, OR OTHER LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+---
+
+This document describes the terms for the original XXAMI DumpAna material. It is not a replacement for the license texts, copyright notices, or attribution requirements of third-party components.
