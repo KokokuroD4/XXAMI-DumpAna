@@ -272,6 +272,9 @@ class GLMeshRenderer:
         self.gl = {}
         self.vao = self.vbo = self.ebo = self.texture = self.program = 0
         self.index_count = 0
+        self._mesh_key = None
+        self._mesh_refs = None
+        self._texture_key = None
         self._load_functions()
         self._create_program()
 
@@ -298,8 +301,8 @@ class GLMeshRenderer:
             "glGetProgramiv": (None, [ui, ui, ctypes.POINTER(i)]), "glGetProgramInfoLog": (None, [ui, i, ctypes.POINTER(i), v]),
             "glUseProgram": (None, [ui]), "glGetUniformLocation": (i, [ui, ctypes.c_char_p]),
             "glUniformMatrix4fv": (None, [i, i, b, ctypes.POINTER(f)]), "glUniform1i": (None, [i, i]),
-            "glUniform1f": (None, [i, f]), "glGenVertexArrays": (None, [i, ctypes.POINTER(ui)]),
-            "glBindVertexArray": (None, [ui]), "glGenBuffers": (None, [i, ctypes.POINTER(ui)]),
+            "glUniform1f": (None, [i, f]), "glGenVertexArrays": (None, [i, ctypes.POINTER(ui)]), "glDeleteVertexArrays": (None, [i, ctypes.POINTER(ui)]),
+            "glBindVertexArray": (None, [ui]), "glGenBuffers": (None, [i, ctypes.POINTER(ui)]), "glDeleteBuffers": (None, [i, ctypes.POINTER(ui)]),
             "glBindBuffer": (None, [ui, ui]), "glBufferData": (None, [ui, sz, v, ui]),
             "glEnableVertexAttribArray": (None, [ui]), "glVertexAttribPointer": (None, [ui, i, ui, b, i, v]),
             "glDrawElements": (None, [ui, i, ui, v]), "glEnable": (None, [ui]),
@@ -347,6 +350,12 @@ class GLMeshRenderer:
             raise ValueError("La cantidad de UV debe coincidir con la de vértices")
         vertices = np.ascontiguousarray(np.column_stack((pos, uv)), dtype=np.float32)
         ui = ctypes.c_uint
+        if self.vao:
+            old = (ui * 1)(self.vao)
+            self.gl["glDeleteVertexArrays"](1, old)
+        old_buffers = (ui * 2)(self.vbo, self.ebo)
+        if self.vbo or self.ebo:
+            self.gl["glDeleteBuffers"](2, old_buffers)
         ids = (ui * 1)()
         self.gl["glGenVertexArrays"](1, ids)
         self.vao = ids[0]
@@ -367,12 +376,17 @@ class GLMeshRenderer:
         self.index_count = int(idx.size)
 
     def upload_texture(self, image):
-        """Sube una PIL.Image RGBA a la GPU."""
+        """Sube/actualiza una PIL.Image RGBA; conserva el objeto OpenGL entre frames."""
+        import hashlib
         import numpy as np
         rgba = np.ascontiguousarray(image.convert("RGBA"), dtype=np.uint8)
+        key = (rgba.shape, hashlib.sha1(rgba).digest())
+        if self.texture and key == self._texture_key:
+            return
         ids = (ctypes.c_uint * 1)()
-        self.gl["glGenTextures"](1, ids)
-        self.texture = ids[0]
+        if not self.texture:
+            self.gl["glGenTextures"](1, ids)
+            self.texture = ids[0]
         self.gl["glActiveTexture"](self.GL_TEXTURE0)
         self.gl["glBindTexture"](self.GL_TEXTURE_2D, self.texture)
         self.gl["glTexParameteri"](self.GL_TEXTURE_2D, self.GL_TEXTURE_MIN_FILTER, self.GL_LINEAR)
@@ -382,6 +396,7 @@ class GLMeshRenderer:
         self.gl["glPixelStorei"](self.GL_UNPACK_ALIGNMENT, 1)
         h, w = rgba.shape[:2]
         self.gl["glTexImage2D"](self.GL_TEXTURE_2D, 0, self.GL_RGBA, w, h, 0, self.GL_RGBA, self.GL_UNSIGNED_BYTE, rgba.ctypes.data_as(ctypes.c_void_p))
+        self._texture_key = key
 
     def draw(self, width, height, mvp, use_texture=True, alpha_multiplier=1.0):
         """Dibuja con Z-buffer; mvp debe ser una matriz 4×4 en orden column-major."""
@@ -402,40 +417,54 @@ class GLMeshRenderer:
         self.gl["glDrawElements"](self.GL_TRIANGLES, self.index_count, self.GL_UNSIGNED_INT, None)
 
 
-    def render_image(self, positions, uvs, triangles, texture, width, height, rot_x=0.5, rot_y=0.6, zoom=1.0):
-        """Renderiza una imagen RGB mediante GPU y lee el framebuffer para mostrarlo en Tk."""
+    def render_image(self, positions, uvs, triangles, texture, width, height, rot_x=0.5, rot_y=0.6, zoom=1.0, pan_x=0.0, pan_y=0.0):
+        """Renderiza geometría persistente en GPU; la cámara se transforma mediante la matriz MVP."""
         import numpy as np
         from PIL import Image
         pos = np.asarray(positions, dtype=np.float32)
         faces = np.asarray(triangles, dtype=np.int64).reshape(-1, 3)
         if len(pos) == 0 or len(faces) == 0:
             return Image.new("RGB", (int(width), int(height)), (17, 17, 17))
-        good = np.isfinite(pos).all(axis=1)
-        safe = np.where(good[:, None], pos, 0.0)
-        center = (safe[good].min(axis=0) + safe[good].max(axis=0)) / 2 if good.any() else np.zeros(3)
-        extent = float((safe[good].max(axis=0) - safe[good].min(axis=0)).max()) if good.any() else 1.0
-        p = (safe - center) / (extent if extent > 1e-12 else 1.0)
-        cy, sy, cx, sx = np.cos(rot_y), np.sin(rot_y), np.cos(rot_x), np.sin(rot_x)
-        x1 = p[:, 0] * cy - p[:, 2] * sy
-        z1 = p[:, 0] * sy + p[:, 2] * cy
-        y2 = p[:, 1] * cx - z1 * sx
-        z2 = p[:, 1] * sx + z1 * cx
-        scale = 0.85 * min(int(width), int(height)) * float(zoom)
-        # NDC keeps the existing Tk viewport dimensions/camera controls.
-        transformed = np.column_stack((x1 * scale * 2 / max(1, width),
-                                       y2 * scale * 2 / max(1, height),
-                                       np.clip(z2, -1.0, 1.0) * 0.8)).astype(np.float32)
-        transformed[~good] = 0
-        self.upload_mesh(transformed, uvs, faces)
+
+        mesh_key = (id(positions), id(uvs), id(triangles), pos.shape, faces.shape)
+        if mesh_key != self._mesh_key:
+            good = np.isfinite(pos).all(axis=1)
+            safe = np.where(good[:, None], pos, 0.0)
+            if good.any():
+                center = (safe[good].min(axis=0) + safe[good].max(axis=0)) / 2
+                extent = float((safe[good].max(axis=0) - safe[good].min(axis=0)).max())
+            else:
+                center, extent = np.zeros(3, dtype=np.float32), 1.0
+            normalized = (safe - center) / (extent if extent > 1e-12 else 1.0)
+            normalized[~good] = 0
+            self.upload_mesh(normalized, uvs, faces)
+            self._mesh_key = mesh_key
+            self._mesh_refs = (positions, uvs, triangles)
+
         if texture is not None:
             self.upload_texture(texture)
-        else:
-            self.texture = 0
-        self.draw(width, height, np.eye(4, dtype=np.float32), use_texture=texture is not None)
+
+        cy, sy = np.cos(rot_y), np.sin(rot_y)
+        cx, sx = np.cos(rot_x), np.sin(rot_x)
+        rotate_y = np.array([[cy, 0, -sy, 0], [0, 1, 0, 0],
+                             [sy, 0, cy, 0], [0, 0, 0, 1]], dtype=np.float32)
+        rotate_x = np.array([[1, 0, 0, 0], [0, cx, -sx, 0],
+                             [0, sx, cx, 0], [0, 0, 0, 1]], dtype=np.float32)
+        scale = 0.85 * min(int(width), int(height)) * float(zoom)
+        projection = np.diag([2 * scale / max(1, int(width)),
+                              2 * scale / max(1, int(height)), 0.8, 1.0]).astype(np.float32)
+        # El pan se incorpora a la matriz de cámara en coordenadas de clip.
+        # Así solo se traslada la geometría; el fondo y el viewport permanecen fijos.
+        translate = np.eye(4, dtype=np.float32)
+        translate[0, 3] = 2.0 * float(pan_x) / max(1, int(width))
+        translate[1, 3] = -2.0 * float(pan_y) / max(1, int(height))
+        mvp = translate @ projection @ rotate_x @ rotate_y
+        self.draw(width, height, mvp, use_texture=texture is not None)
         read = self._fn("glReadPixels", None, [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                                ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p])
         buf = np.empty((int(height), int(width), 4), dtype=np.uint8)
-        read(0, 0, int(width), int(height), self.GL_RGBA, self.GL_UNSIGNED_BYTE, buf.ctypes.data_as(ctypes.c_void_p))
+        read(0, 0, int(width), int(height), self.GL_RGBA, self.GL_UNSIGNED_BYTE,
+             buf.ctypes.data_as(ctypes.c_void_p))
         return Image.fromarray(np.flipud(buf[:, :, :3]).copy(), "RGB")
 
     def close(self):

@@ -115,7 +115,7 @@ def _datos_nivel(f, info, nivel):
 
 
 def bytes_mip0(ruta):
-    """Bytes del mip 0 / capa 0 / cara 0 / corte 0: lo mismo que contenía el .raw de antes."""
+    """Bytes del mip 0 / capa 0 / cara 0 / corte 0 del contenedor KTX2."""
     info = leer_cabecera(ruta)
     with open(str(ruta), "rb") as f:
         datos = _datos_nivel(f, info, 0)

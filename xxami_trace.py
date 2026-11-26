@@ -599,7 +599,7 @@ def construir_malla(trace, draw, indice, attr_pos=None, attr_uv=None):
 # ---------------------------------------------------------------------------
 # Volcado de modelos del generador (carpeta Models/ dentro de cada Frame_Trace_*)
 #   PartNN-vb0=<hash>.buf/.txt  vértices ya unidos: posición, normal, tangente, pesos, índices de hueso, texcoords
-#   PartNN-ib=<hash>.buf/.txt   índices          PartNN-bones.buf   matrices de huesos      PartNN<Slot>.ktx2/.raw texturas
+#   PartNN-ib=<hash>.buf/.txt   índices          PartNN-bones.buf   matrices de huesos      PartNN<Slot>.ktx2 texturas
 # ---------------------------------------------------------------------------
 _RE_PART_VB = re.compile(r"^(Part\d+)-vb0=([0-9a-fA-F]+)\.buf$")
 DXGI_A_VK = {"R8_UNORM": 9, "R8G8_UNORM": 16, "R8G8B8A8_UNORM": 37, "R8G8B8A8_SNORM": 38, "R8G8B8A8_UINT": 41,
@@ -715,7 +715,7 @@ def construir_malla_part(ruta_vb):
     m.caras, m.lineas = _triangulos(topologia, inv.astype(np.int64), m.avisos)
     bones = ruta_vb.parent / f"{parte}-bones.buf"
     texturas = sorted(p for p in ruta_vb.parent.iterdir()
-                      if p.name.startswith(parte) and "-" not in p.name and p.suffix.lower() in (".ktx2", ".raw"))
+                      if p.name.startswith(parte) and "-" not in p.name and p.suffix.lower() in (".ktx2"))
     m.info = {"parte": parte, "vertices": n, "stride": stride, "ib": ib_ruta, "bones": bones if bones.exists() else None, "texturas": texturas}
     m.avisos.append("pose base: no se aplican los huesos")
     return m
@@ -737,7 +737,7 @@ def _aristas_unicas(caras, lineas):
     return np.unique(e, axis=0)
 
 
-def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0, modo="alambre", max_elementos=120000, textura_material=None):
+def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0, modo="alambre", max_elementos=120000, textura_material=None, pan_x=0.0, pan_y=0.0):
     """Imagen RGB de la malla. Material aplica una textura al modo sólido cuando hay UV."""
 
     img = Image.new("RGB", (ancho, alto), (17, 17, 17))
@@ -754,8 +754,9 @@ def renderizar_malla(malla, ancho=700, alto=480, rot_x=0.5, rot_y=0.5, zoom=1.0,
     y2 = P[:, 1] * cx - z1 * sx
     z2 = P[:, 1] * sx + z1 * cx
     escala = 0.85 * min(ancho, alto) * zoom
-    X = ancho / 2 + x1 * escala
-    Y = alto / 2 - y2 * escala
+    # Desplaza la geometría en coordenadas de pantalla; el lienzo no se transforma.
+    X = ancho / 2 + x1 * escala + float(pan_x)
+    Y = alto / 2 - y2 * escala + float(pan_y)
     dib = ImageDraw.Draw(img)
     caras = malla.caras[ok[malla.caras].all(axis=1)] if len(malla.caras) else malla.caras
     if modo == "puntos" or (malla.vacia is False and len(caras) == 0 and len(malla.lineas) == 0):
