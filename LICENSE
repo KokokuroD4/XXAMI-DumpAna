@@ -23,9 +23,9 @@ This permission does not grant ownership of the software or any right not expres
 
 ## 3. Derivative Works and Modifications
 
-The creation, distribution, or publication of any derivative work, fork, or modified version of the original XXAMI DumpAna material is strictly prohibited without the express, prior, written authorization of the original author.
+The creation, modification, distribution, and publication of derivative works and forks of the original XXAMI DumpAna material are permitted without prior written authorization from the original author, provided that all conditions in this section and the rest of this document are respected.
 
-If written authorization is granted, the authorized work must provide substantial technical value, new features, or significant architectural changes. Clones, identical distributions, mere interface changes ("re-skins"), and near-identical copies that use the core logic of this software are not permitted.
+Any derivative work or fork that is distributed or published must provide substantial technical value through meaningful modifications, new features, or significant architectural changes. Clones, unchanged or effectively identical distributions, mere interface changes ("re-skins"), and near-identical copies that do not provide meaningful technical changes are not permitted. All other restrictions and conditions in this license remain in force.
 
 ## 4. Third-Party Components
 
