@@ -77,7 +77,7 @@ python model_viewer_qt.py --root "D:\\ruta\\al\\volcado" "D:\\ruta\\al\\volcado\
 
 ## Compilar ejecutables independientes para Windows
 
-El Explorador y el Visor pueden empaquetarse por separado con PyInstaller. Los comandos completos, las importaciones ocultas, la gestión de recursos y las notas de distribución se mantienen en **[EXPLORER_BUILD.md](EXPLORER_BUILD.md)**.
+El Explorador y el Visor pueden empaquetarse por separado con PyInstaller. Los comandos completos, las importaciones ocultas, la gestión de recursos y las notas de distribución se mantienen en **[TOOLS_BUILD.es.md](TOOLS_BUILD.es.md)** (Español) · **[TOOLS_BUILD.md](TOOLS_BUILD.md)** (English).
 
 En las versiones empaquetadas, conserva junto al ejecutable el directorio `lang/` correspondiente para que los catálogos de idioma sigan siendo externos y puedan actualizarse de forma independiente. Mantén también disponibles los recursos necesarios de `res/`, tal como se describe en la guía de compilación.
 
@@ -89,7 +89,8 @@ En las versiones empaquetadas, conserva junto al ejecutable el directorio `lang/
 - `texture_decoder.py`, `ktx2_util.py` — utilidades compartidas para texturas y KTX2.
 - `xxami_render_backend.py` y los módulos de backend — selección e implementaciones de renderizado.
 - `lang/explorer_lang/` y `lang/viewer_lang/` — catálogos de idioma independientes para cada aplicación.
-- `EXPLORER_BUILD.md` — guía detallada de ejecución, compilación y distribución de recursos.
+- `TOOLS_BUILD.es.md` — guía detallada de ejecución y compilación (español).
+- `TOOLS_BUILD.md` — detailed build and usage guide (English).
 
 ## Notas
 
